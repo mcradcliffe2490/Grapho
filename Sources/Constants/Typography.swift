@@ -51,3 +51,25 @@ enum AppSpacing {
     /// Top padding below the sticky title before chapter content starts.
     static let chapterTopPadding: CGFloat = 48
 }
+
+/// Two reading layouts. The text uses tighter margins in Reader (portrait,
+/// full-width) and wider margins in Scholar (split with the scratchpad) so
+/// the column doesn't feel cramped against the divider.
+enum ReaderStyle {
+    case reader
+    case scholar
+
+    var leadingMargin: CGFloat {
+        switch self {
+        case .reader: return AppSpacing.readingMarginLeading
+        case .scholar: return 56
+        }
+    }
+
+    var trailingMargin: CGFloat {
+        switch self {
+        case .reader: return AppSpacing.readingMarginTrailing
+        case .scholar: return 72
+        }
+    }
+}

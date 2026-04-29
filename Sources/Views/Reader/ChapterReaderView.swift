@@ -26,9 +26,13 @@ struct ChapterReaderView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
     @AppStorage(PreferenceKey.headerMode) private var headerModeRaw: String = HeaderMode.custom.rawValue
+    @AppStorage(PreferenceKey.pencilOnlyDraw) private var pencilOnly: Bool = false
 
     let route: ChapterRoute
     let advance: (ChapterRoute) -> Void
+    /// Layout flavor — Reader (portrait) uses tight margins, Scholar
+    /// (landscape, embedded in the split) uses wider ones.
+    var style: ReaderStyle = .reader
 
     @State private var activeLayer: AnnotationLayer?
     @State private var pendingAction: PendingAction?
@@ -75,20 +79,38 @@ struct ChapterReaderView: View {
                         .padding(.top, 32)
                 }
             }
-            .padding(.leading, AppSpacing.readingMarginLeading)
-            .padding(.trailing, AppSpacing.readingMarginTrailing)
+            .padding(.leading, style.leadingMargin)
+            .padding(.trailing, style.trailingMargin)
             .padding(.top, AppSpacing.chapterTopPadding)
             .padding(.bottom, 96)
             .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .background(palette.color.ignoresSafeArea())
-        .navigationTitle("\(route.book.displayName) \(route.chapter)")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                LayerSwitcher()
+            // Inline draw-on-text canvas — Scholar mode only. Sized via the
+            // overlay modifier so it matches the chapter content height
+            // exactly. Finger touches pass through to the ScrollView for
+            // scrolling; pencil claims the hit and draws.
+            .overlay {
+                if style == .scholar, activeLayer != nil {
+                    inlineCanvasOverlay
+                }
             }
         }
+        .background(palette.color.ignoresSafeArea())
+        // Floating Scholar menu — Reader portrait shows it here. Scholar
+        // mode hides it (the parent ScholarReaderView shows one for the
+        // whole window so it doesn't sit awkwardly in the divider gutter).
+        .overlay(alignment: .topTrailing) {
+            if style == .reader {
+                FloatingScholarMenu(
+                    style: .reader,
+                    onClearInlineDrawing: nil,
+                    onClearScratchpad: nil
+                )
+                .padding(.trailing, 16)
+                .padding(.top, 12)
+            }
+        }
+        .navigationTitle("\(route.book.displayName) \(route.chapter)")
+        .navigationBarTitleDisplayMode(.inline)
         .environment(\.openURL, OpenURLAction { url in
             handleVerseURL(url)
         })
@@ -247,6 +269,33 @@ struct ChapterReaderView: View {
                     .foregroundStyle(AppColor.textFaint)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    // MARK: - Inline canvas (Scholar mode only)
+
+    /// PencilKit overlay that sits on top of the chapter content. Finger
+    /// touches pass through (so the reader still scrolls under finger drag);
+    /// pencil touches claim the hit and draw. Bound to the active layer's
+    /// `pkDrawingData` so layer switches swap drawings.
+    @ViewBuilder
+    private var inlineCanvasOverlay: some View {
+        if let layer = activeLayer {
+            DrawingCanvasView(
+                drawingData: Binding(
+                    get: { layer.pkDrawingData },
+                    set: { newValue in
+                        layer.pkDrawingData = newValue
+                    }
+                ),
+                pencilOnly: pencilOnly,
+                passesFingerThrough: true,
+                onChange: { data in
+                    layer.pkDrawingData = data
+                    try? modelContext.save()
+                }
+            )
+            .allowsHitTesting(true)
         }
     }
 

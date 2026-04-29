@@ -1,9 +1,40 @@
 import SwiftUI
 import PencilKit
 
-/// SwiftUI wrapper around `PKCanvasView`. Loads serialized `PKDrawing` data
-/// in, calls `onChange` with new data after a short debounce, and switches
-/// between pencil-only and finger-allowed input based on user preference.
+/// `PKCanvasView` subclass that lets finger touches fall through to whatever
+/// is below it (typically a `ScrollView` carrying text), while still claiming
+/// pencil touches for drawing. Used by the Scholar inline canvas so the
+/// reader scrolls under finger drag and the pencil draws on top of the words.
+///
+/// The trick: hit-test by inspecting the touch types in the current event.
+/// If any active touch is `.pencil`, claim the hit; otherwise return false
+/// so UIKit walks past us to the underlying view. The standalone
+/// `drawingPolicy = .pencilOnly` would block finger *drawing*, but it
+/// wouldn't help with scroll passthrough — that's why this subclass exists.
+final class PassThroughCanvasView: PKCanvasView {
+    /// When `true`, this canvas behaves as an overlay that ignores finger
+    /// hits entirely (their touches reach views below). When `false`, the
+    /// canvas is a normal scroll-and-draw surface and gets all hits.
+    var passesFingerThrough: Bool = true
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        guard passesFingerThrough else {
+            return super.point(inside: point, with: event)
+        }
+        guard let touches = event?.allTouches else {
+            // No touch info yet — claim the hit so a freshly-arriving pencil
+            // event can route here. Subsequent finger events get re-evaluated.
+            return super.point(inside: point, with: event)
+        }
+        // Claim the hit only if at least one touch is pencil.
+        return touches.contains { $0.type == .pencil }
+    }
+}
+
+/// SwiftUI wrapper around `PKCanvasView` (specifically `PassThroughCanvasView`).
+/// Loads serialized `PKDrawing` data in, calls `onChange` with new data after
+/// a short debounce, and switches between pencil-only and finger-allowed input
+/// based on user preference.
 ///
 /// The debounce matters: `canvasViewDrawingDidChange` fires on every stroke
 /// segment. Persisting on each call would thrash SwiftData. 1.5 s of idle
@@ -16,16 +47,27 @@ import PencilKit
 struct DrawingCanvasView: UIViewRepresentable {
     @Binding var drawingData: Data
     let pencilOnly: Bool
+    /// Pass finger touches through to whatever's below the canvas. Used by
+    /// the inline draw-on-text overlay in Scholar mode so the reader keeps
+    /// its scroll-on-finger behavior. The standalone scratchpad sets this
+    /// to `false` since it's the only thing in its pane.
+    var passesFingerThrough: Bool = false
     let onChange: (Data) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
-        let canvas = PKCanvasView()
+        let canvas = PassThroughCanvasView()
+        canvas.passesFingerThrough = passesFingerThrough
         canvas.delegate = context.coordinator
         canvas.drawingPolicy = pencilOnly ? .pencilOnly : .anyInput
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
-        canvas.alwaysBounceVertical = true
+        // The inline canvas piggybacks on the outer ScrollView; disable its
+        // own scrolling so it doesn't fight for finger pans.
+        canvas.isScrollEnabled = !passesFingerThrough
+        canvas.alwaysBounceVertical = !passesFingerThrough
         canvas.alwaysBounceHorizontal = false
+        canvas.minimumZoomScale = 1
+        canvas.maximumZoomScale = 1
 
         if let drawing = try? PKDrawing(data: drawingData) {
             canvas.drawing = drawing
@@ -50,6 +92,9 @@ struct DrawingCanvasView: UIViewRepresentable {
         let desired: PKCanvasViewDrawingPolicy = pencilOnly ? .pencilOnly : .anyInput
         if canvas.drawingPolicy != desired {
             canvas.drawingPolicy = desired
+        }
+        if let pt = canvas as? PassThroughCanvasView {
+            pt.passesFingerThrough = passesFingerThrough
         }
 
         // Reload the drawing only when the externally-bound data actually

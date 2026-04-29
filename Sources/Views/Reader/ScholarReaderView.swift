@@ -1,13 +1,16 @@
 import SwiftUI
 import SwiftData
 
-/// Landscape "Scholar" layout: reading column on the left, freeform PencilKit
-/// scratchpad on the right. Both panes are scoped to the same `AnnotationLayer`,
-/// so switching layers swaps highlights, notes, AND the scratchpad drawing
-/// in lockstep.
+/// Landscape "Scholar" layout: reading column on the left (with an inline
+/// draw-on-text PencilKit overlay), freeform PencilKit scratchpad on the
+/// right. Both surfaces are scoped to the same `AnnotationLayer`, so
+/// switching layers swaps highlights, notes, the inline ink, AND the
+/// scratchpad drawing in lockstep.
 ///
-/// The split is 60/40 in favor of reading — the right pane is for sketches
-/// and marginalia, not the primary surface.
+/// The split is 50/50 — the right pane gets equal real estate, matching the
+/// design that the scratchpad is for writing *next to* the verses, not just
+/// quick marginalia. Text margins widen in this mode (via `ReaderStyle`)
+/// so the reading column doesn't crowd the divider.
 struct ScholarReaderView: View {
     @Environment(BibleStore.self) private var bibleStore
     @Environment(LayerStore.self) private var layerStore
@@ -25,16 +28,28 @@ struct ScholarReaderView: View {
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
-                // Reuse the portrait reader as the left pane verbatim — same
-                // highlight/note/header machinery.
-                ChapterReaderView(route: route, advance: advance)
-                    .frame(width: geo.size.width * 0.6)
+                // Left: portrait reader with style=.scholar (wider margins +
+                // inline draw-on-text canvas activated).
+                ChapterReaderView(route: route, advance: advance, style: .scholar)
+                    .frame(width: geo.size.width * 0.5)
 
                 Divider()
 
                 scratchpad
-                    .frame(width: geo.size.width * 0.4 - 1)
+                    .frame(width: geo.size.width * 0.5 - 1)
             }
+        }
+        .overlay(alignment: .topTrailing) {
+            // One floating menu for the whole window — sits in the right
+            // margin of the scratchpad pane. The embedded ChapterReaderView
+            // suppresses its own menu when style == .scholar.
+            FloatingScholarMenu(
+                style: .scholar,
+                onClearInlineDrawing: { clearInlineDrawing() },
+                onClearScratchpad: { clearScratchpad() }
+            )
+            .padding(.trailing, 16)
+            .padding(.top, 12)
         }
         .task(id: scratchpadKey) {
             await loadScratchpad()
@@ -50,14 +65,6 @@ struct ScholarReaderView: View {
                     .font(AppFont.layerIndicator)
                     .foregroundStyle(AppColor.textSecondary)
                 Spacer()
-                Button {
-                    clearDrawing()
-                } label: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(AppColor.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear scratchpad")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -66,6 +73,7 @@ struct ScholarReaderView: View {
             DrawingCanvasView(
                 drawingData: $scratchpadData,
                 pencilOnly: pencilOnly,
+                passesFingerThrough: false,
                 onChange: { data in
                     persistScratchpad(data)
                 }
@@ -97,10 +105,17 @@ struct ScholarReaderView: View {
         try? modelContext.save()
     }
 
-    private func clearDrawing() {
+    private func clearScratchpad() {
         scratchpadData = Data()
         if let layer = activeLayer {
             layer.pkScratchpadData = Data()
+            try? modelContext.save()
+        }
+    }
+
+    private func clearInlineDrawing() {
+        if let layer = activeLayer {
+            layer.pkDrawingData = Data()
             try? modelContext.save()
         }
     }
