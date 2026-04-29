@@ -1,0 +1,32 @@
+# Xcode
+*.xcodeproj/project.xcworkspace/
+xcuserdata/
+DerivedData/
+*.pbxuser
+!default.pbxuser
+*.mode1v2
+!default.mode1v2
+*.mode2v2
+!default.mode2v2
+*.perspectivev3
+!default.perspectivev3
+
+# SwiftData / SQLite
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Bible translation JSON (never commit)
+*.json
+!Sources/**/*.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Build
+build/
+Products/
+
