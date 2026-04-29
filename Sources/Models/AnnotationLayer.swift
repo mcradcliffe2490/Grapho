@@ -14,8 +14,14 @@ final class AnnotationLayer {
     /// Book abbreviation (USFM 3-letter) — see `Book.rawValue`.
     var book: String
     var chapter: Int
-    /// Serialized `PKDrawing`. Empty `Data()` until the first stroke commits.
+    /// Serialized `PKDrawing` for the inline reading-column drawing surface.
+    /// Reserved for the post-MVP draw-on-text overlay; unused in v1.
     var pkDrawingData: Data
+    /// Serialized `PKDrawing` for Scholar mode's right-pane scratchpad. Per
+    /// design, the scratchpad is the v1 drawing surface — keeping it on the
+    /// same model means switching layers swaps drawings the same way it
+    /// swaps highlights and notes.
+    var pkScratchpadData: Data = Data()
 
     @Relationship(deleteRule: .cascade, inverse: \Highlight.layer)
     var highlights: [Highlight]
@@ -30,6 +36,7 @@ final class AnnotationLayer {
         book: String,
         chapter: Int,
         pkDrawingData: Data = Data(),
+        pkScratchpadData: Data = Data(),
         highlights: [Highlight] = [],
         notes: [VerseNote] = []
     ) {
@@ -39,6 +46,7 @@ final class AnnotationLayer {
         self.book = book
         self.chapter = chapter
         self.pkDrawingData = pkDrawingData
+        self.pkScratchpadData = pkScratchpadData
         self.highlights = highlights
         self.notes = notes
     }

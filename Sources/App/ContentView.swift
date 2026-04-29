@@ -24,7 +24,7 @@ struct ContentView: View {
                             ChapterSelectorView(book: book)
                         }
                         .navigationDestination(for: ChapterRoute.self) { route in
-                            ChapterReaderView(route: route) { next in
+                            ReaderContainerView(route: route) { next in
                                 // Replace the top of the stack rather than
                                 // appending — sequential reading shouldn't
                                 // build up a back-stack of every chapter.

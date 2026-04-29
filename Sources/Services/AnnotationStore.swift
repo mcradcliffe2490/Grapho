@@ -67,6 +67,70 @@ struct AnnotationStore {
         layer.pkDrawingData = Data()
     }
 
+    // MARK: - Highlights
+
+    /// Whole-verse highlight semantics for v1: `startOffset = 0`, `endOffset = -1`
+    /// (sentinel for "to end of verse"). Sub-string highlighting is post-MVP.
+    static let wholeVerseSentinel = -1
+
+    /// Upsert: if a highlight already exists for this verse on this layer,
+    /// update its color; otherwise insert a new one.
+    func setHighlight(verseNumber: Int, color: HighlightColor, on layer: AnnotationLayer) {
+        if let existing = layer.highlights.first(where: { $0.verseId == verseNumber }) {
+            existing.color = color
+        } else {
+            let highlight = Highlight(
+                verseId: verseNumber,
+                startOffset: 0,
+                endOffset: Self.wholeVerseSentinel,
+                color: color,
+                layer: layer
+            )
+            context.insert(highlight)
+            layer.highlights.append(highlight)
+        }
+    }
+
+    func clearHighlight(verseNumber: Int, on layer: AnnotationLayer) {
+        let toRemove = layer.highlights.filter { $0.verseId == verseNumber }
+        for h in toRemove {
+            context.delete(h)
+        }
+    }
+
+    // MARK: - Notes & section headers
+
+    /// Free-form note anchored to a verse. Multiple notes per verse are
+    /// allowed — a verse can collect several thoughts over time.
+    @discardableResult
+    func addNote(verseNumber: Int, text: String, on layer: AnnotationLayer) -> VerseNote {
+        let note = VerseNote(verseId: verseNumber, text: text, kind: .note, layer: layer)
+        context.insert(note)
+        layer.notes.append(note)
+        return note
+    }
+
+    /// User-authored section header rendered above the given verse.
+    @discardableResult
+    func setSectionHeader(beforeVerse verseNumber: Int, text: String, on layer: AnnotationLayer) -> VerseNote {
+        // One header per verse-anchor: replace if an existing header anchors
+        // to the same verse on the same layer.
+        if let existing = layer.notes.first(where: {
+            $0.verseId == verseNumber && $0.kindRaw == NoteKind.sectionHeader.rawValue
+        }) {
+            existing.text = text
+            return existing
+        }
+        let header = VerseNote(verseId: verseNumber, text: text, kind: .sectionHeader, layer: layer)
+        context.insert(header)
+        layer.notes.append(header)
+        return header
+    }
+
+    func deleteNote(_ note: VerseNote) {
+        context.delete(note)
+    }
+
     // MARK: - Reading history
 
     private static let historyCap = 100

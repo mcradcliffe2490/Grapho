@@ -83,6 +83,28 @@ struct TranslationImporter {
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// All imported translations currently on disk. Used by the settings
+    /// translation manager to list switch / delete affordances.
+    func listImported() -> [ImportedTranslation] {
+        guard let url = try? documentsURL(),
+              let entries = try? fileManager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)
+        else { return [] }
+        return entries
+            .filter { $0.pathExtension.lowercased() == "json" }
+            .map { fileURL in
+                let identifier = fileURL.deletingPathExtension().lastPathComponent
+                let displayName = identifier
+                    .replacingOccurrences(of: "-", with: " ")
+                    .capitalized
+                return ImportedTranslation(
+                    identifier: identifier,
+                    displayName: displayName,
+                    storedURL: fileURL
+                )
+            }
+            .sorted { $0.displayName < $1.displayName }
+    }
+
     // MARK: - Helpers
 
     private func documentsURL() throws -> URL {

@@ -14,10 +14,13 @@ import SwiftData
 struct HomeView: View {
     @Environment(BibleStore.self) private var bibleStore
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
 
     @State private var showImporter = false
     @State private var importError: String?
     @State private var lastRead: LastReadingPosition? = LastReadingPosition.read()
+
+    private var palette: BackgroundPalette { .current(rawValue: paletteRaw) }
 
     private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 12)]
 
@@ -41,7 +44,7 @@ struct HomeView: View {
             .padding(.vertical, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .background(AppColor.background.ignoresSafeArea())
+        .background(palette.color.ignoresSafeArea())
         .navigationTitle("Grapho")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
