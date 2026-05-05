@@ -8,6 +8,28 @@ struct ContentView: View {
     @Environment(BibleStore.self) private var bibleStore
     @State private var path = NavigationPath()
 
+    /// Navigation actions shared with the reader views. Built fresh per body
+    /// evaluation so the closures capture the current `path` binding via
+    /// `$path.wrappedValue` semantics.
+    private var navigation: ReaderNavigation {
+        ReaderNavigation(
+            advance: { next in
+                if !path.isEmpty { path.removeLast() }
+                path.append(next)
+            },
+            goHome: {
+                path = NavigationPath()
+            },
+            openBook: { book in
+                path = NavigationPath()
+                path.append(book)
+            },
+            openNotesBrowser: {
+                path.append(LibraryRoute.notesBrowser)
+            }
+        )
+    }
+
     var body: some View {
         Group {
             switch bibleStore.loadingState {
@@ -24,18 +46,13 @@ struct ContentView: View {
                             ChapterSelectorView(book: book)
                         }
                         .navigationDestination(for: ChapterRoute.self) { route in
-                            ReaderContainerView(route: route) { next in
-                                // Replace the top of the stack rather than
-                                // appending — sequential reading shouldn't
-                                // build up a back-stack of every chapter.
-                                if !path.isEmpty { path.removeLast() }
-                                path.append(next)
-                            }
+                            ReaderContainerView(route: route, navigation: navigation)
                         }
                         .navigationDestination(for: LibraryRoute.self) { route in
                             switch route {
                             case .highlights: HighlightsView()
                             case .notes: NotesListView()
+                            case .notesBrowser: NotesBrowserView()
                             case .history: HistoryView()
                             case .settings: SettingsView()
                             }

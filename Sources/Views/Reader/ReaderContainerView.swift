@@ -9,14 +9,14 @@ import SwiftUI
 /// in landscape can still render Reader-portrait if the *window* is narrow.
 struct ReaderContainerView: View {
     let route: ChapterRoute
-    let advance: (ChapterRoute) -> Void
+    let navigation: ReaderNavigation
 
     var body: some View {
         GeometryReader { geo in
             if geo.size.width > geo.size.height {
-                ScholarReaderView(route: route, advance: advance)
+                ScholarReaderView(route: route, navigation: navigation)
             } else {
-                ChapterReaderView(route: route, advance: advance)
+                ChapterReaderView(route: route, navigation: navigation)
             }
         }
     }

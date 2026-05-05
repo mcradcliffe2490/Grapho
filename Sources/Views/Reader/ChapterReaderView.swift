@@ -20,10 +20,12 @@ struct ChapterReaderView: View {
     @AppStorage(PreferenceKey.headerMode) private var headerModeRaw: String = HeaderMode.custom.rawValue
 
     let route: ChapterRoute
-    let advance: (ChapterRoute) -> Void
+    let navigation: ReaderNavigation
     /// Layout flavor — Reader (portrait) shows its own toolbar; Scholar
     /// (landscape) hides it (the split parent owns the chrome).
     var style: ReaderStyle = .reader
+
+    private var advance: (ChapterRoute) -> Void { navigation.advance }
 
     @State private var activeLayer: AnnotationLayer?
     /// Verse number whose inline color picker is currently open. `nil` when
@@ -81,6 +83,16 @@ struct ChapterReaderView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(palette.color.ignoresSafeArea())
+        // Library bubble — left margin, fixed in screen space. Reader
+        // portrait shows it here; Scholar's parent supplies its own copy
+        // so the bubble lives at the window edge, not the column edge.
+        .overlay(alignment: .topLeading) {
+            if style == .reader {
+                LibraryMenuButton(navigation: navigation)
+                    .padding(.leading, 16)
+                    .padding(.top, 12)
+            }
+        }
         .toolbar(.hidden, for: .navigationBar)
         .task(id: chapterKey) {
             await onChapterAppear()

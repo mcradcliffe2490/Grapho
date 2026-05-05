@@ -4,12 +4,13 @@ import SwiftData
 /// Landscape "Scholar" layout: 50/50 split. Reader column on the left, a
 /// two-mode notes area on the right.
 ///
-/// The right pane has a segmented toggle at the top — Writing mode shows a
-/// PencilKit canvas (the scratchpad), and Text Notes mode shows an
-/// Apple Notes-style drawer of typed notes.
+/// The right pane has a layer-tap label centered at the very top, then a
+/// segmented Writing | Notes toggle, then the active mode's content.
+/// Writing mode shows a PencilKit canvas (the scratchpad); Notes mode shows
+/// an Apple Notes-style drawer of typed notes.
 ///
-/// Drawing now lives only in the right pane; the inline draw-on-text
-/// overlay we tried earlier is gone. Less ambiguous, no gesture-conflict
+/// Drawing now lives only in the right pane. The inline draw-on-text
+/// overlay we tried earlier is gone — less ambiguous, no gesture-conflict
 /// risk, and matches the user's revised spec for v2.
 struct ScholarReaderView: View {
     @Environment(BibleStore.self) private var bibleStore
@@ -19,7 +20,7 @@ struct ScholarReaderView: View {
     @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
 
     let route: ChapterRoute
-    let advance: (ChapterRoute) -> Void
+    let navigation: ReaderNavigation
 
     @State private var activeLayer: AnnotationLayer?
     @State private var scratchpadData: Data = Data()
@@ -42,20 +43,19 @@ struct ScholarReaderView: View {
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
-                ChapterReaderView(route: route, advance: advance, style: .scholar)
+                ChapterReaderView(route: route, navigation: navigation, style: .scholar)
                     .frame(width: geo.size.width * 0.5)
                 Divider()
                 rightPane
                     .frame(width: geo.size.width * 0.5 - 1)
             }
         }
-        .overlay(alignment: .topTrailing) {
-            // Layer access in Scholar lives here too — same caps tap target
-            // as Reader portrait, so the access pattern doesn't change with
-            // rotation.
-            LayerLabelTapTarget()
-                .padding(.trailing, 24)
-                .padding(.top, 16)
+        // Library bubble at the window's left edge — works in both modes the
+        // same way so the user's mental model is consistent across rotation.
+        .overlay(alignment: .topLeading) {
+            LibraryMenuButton(navigation: navigation)
+                .padding(.leading, 16)
+                .padding(.top, 12)
         }
         .task(id: paneKey) {
             await loadActiveLayer()
@@ -65,8 +65,20 @@ struct ScholarReaderView: View {
 
     private var rightPane: some View {
         VStack(spacing: 0) {
+            // Layer-tap label sits centered above the mode toggle inside
+            // the right pane (per design feedback — used to be over on the
+            // global window-trailing edge).
+            HStack {
+                Spacer()
+                LayerLabelTapTarget()
+                Spacer()
+            }
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
             modeToggle
             Divider()
+
             Group {
                 switch rightPaneMode {
                 case .writing:
@@ -85,6 +97,7 @@ struct ScholarReaderView: View {
             }
             .background(palette.color)
         }
+        .background(AppColor.surface.opacity(0.4))
     }
 
     private var modeToggle: some View {
@@ -97,10 +110,9 @@ struct ScholarReaderView: View {
                         .font(AppFont.microCaps)
                         .tracking(AppSpacing.smallCapsTracking)
                         .foregroundStyle(mode == rightPaneMode ? AppColor.textPrimary : AppColor.textFaint)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 10)
                         .frame(maxWidth: .infinity)
                         .background(
-                            // Subtle bottom underline on the active tab.
                             VStack {
                                 Spacer()
                                 Rectangle()
@@ -112,7 +124,6 @@ struct ScholarReaderView: View {
                 .buttonStyle(.plain)
             }
         }
-        .background(AppColor.surface.opacity(0.5))
     }
 
     private var paneKey: String {
