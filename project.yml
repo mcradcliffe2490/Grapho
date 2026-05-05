@@ -46,6 +46,11 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         ITSAppUsesNonExemptEncryption: false
+        UIAppFonts:
+          - Fonts/CrimsonText-Regular.ttf
+          - Fonts/CrimsonText-Italic.ttf
+          - Fonts/CrimsonText-Bold.ttf
+          - Fonts/Inter[opsz,wght].ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mcradcliffe.grapho

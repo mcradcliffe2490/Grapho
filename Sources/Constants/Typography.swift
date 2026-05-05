@@ -1,60 +1,92 @@
 import SwiftUI
 
-/// Typography tokens from the Grapho design doc §07.
-/// Scripture body uses New York (Apple's serif system font). UI chrome uses SF Pro Text.
+/// Typography tokens. Body type is Crimson Text (a traditional serif tuned for
+/// long-form reading); UI chrome is Inter (the variable sans-serif from rsms).
+/// Both are bundled in `Resources/Fonts/` and registered via `UIAppFonts`.
+///
+/// SwiftUI resolves Inter's variable weight axis when we apply `.fontWeight()`
+/// to a `Font.custom("Inter", …)` value — the named instances ("Inter-Medium",
+/// "Inter-SemiBold") are also exposed by the variable file, but using the
+/// modifier path keeps the call sites uniform with the rest of SwiftUI.
 enum AppFont {
-    /// 18pt fixed in v1 — dynamic type deferred post-MVP so that PencilKit
-    /// drawings remain anchored to a stable reading layout.
-    static let scriptureBody = Font.custom("NewYork-Regular", size: 18, relativeTo: .body)
-        .leading(.loose)
+    // MARK: - Scripture body (Crimson Text)
 
-    static let verseNumber = Font.system(size: 11, weight: .regular, design: .default)
+    /// Long-form scripture body. 17pt with loose leading reads comfortably on
+    /// iPad without the lines getting too long; pairs with `lineSpacing(8)`
+    /// from `AppSpacing.scriptureLineSpacing`.
+    static let scriptureBody = Font.custom("CrimsonText-Regular", size: 17, relativeTo: .body)
 
-    /// Translation/custom section headers — small caps, letter-spacing 0.08em.
-    static let sectionHeader = Font.system(size: 13, weight: .medium, design: .default)
-        .smallCaps()
+    /// Same body face used for chapter titles, scaled larger.
+    static let chapterTitleNumeral = Font.custom("CrimsonText-Regular", size: 56, relativeTo: .largeTitle)
 
-    /// Sticky chapter title — small caps, letter-spacing 0.12em.
-    static let stickyTitle = Font.system(size: 13, weight: .medium, design: .default)
-        .smallCaps()
+    /// Italic Crimson for Psalm superscriptions.
+    static let superscription = Font.custom("CrimsonText-Italic", size: 13, relativeTo: .footnote)
 
-    /// Layer indicator (Scholar mode) — all caps in the layer's accent color.
-    static let layerIndicator = Font.system(size: 11, weight: .semibold, design: .default)
+    // MARK: - UI chrome (Inter)
 
-    /// Psalm superscription — italic small caps centered above verse 1.
-    static let superscription = Font.custom("NewYork-Italic", size: 13, relativeTo: .footnote)
-        .italic()
-        .smallCaps()
+    /// Verse number — 11pt Inter, rendered as a baseline-offset superscript.
+    static let verseNumber = Font.custom("Inter", size: 11, relativeTo: .caption)
+
+    /// User-authored section headers — small caps via tracking + uppercased
+    /// text rather than a font feature, since Inter's small caps coverage is
+    /// uneven at small sizes.
+    static let sectionHeader = Font.custom("Inter", size: 12, relativeTo: .footnote)
+
+    /// "GRAPHO" wordmark, USFM reference label, and active-layer indicator
+    /// in the top toolbar — all share the same hairline tracked-caps style.
+    static let wordmark = Font.custom("Inter", size: 12, relativeTo: .footnote)
+
+    /// "JOHN" small caps label above the chapter numeral.
+    static let chapterTitleBookLabel = Font.custom("Inter", size: 13, relativeTo: .callout)
+
+    /// Layer-tab pill ("Exegetical / Devotional / Thematic" inside the right
+    /// pane).
+    static let layerIndicator = Font.custom("Inter", size: 11, relativeTo: .caption)
+
+    /// "CONTINUE READING" tiny caps label on the home card and similar.
+    static let microCaps = Font.custom("Inter", size: 10, relativeTo: .caption2)
+
+    /// Default UI body — settings rows, list items.
+    static let uiBody = Font.custom("Inter", size: 14, relativeTo: .body)
+
+    /// Section dividers like "Old Testament" / "New Testament" on Home.
+    static let listSection = Font.custom("Inter", size: 11, relativeTo: .caption)
+
+    /// Plain book name in the home columnar list — serif for warmth.
+    static let bookListName = Font.custom("CrimsonText-Regular", size: 16, relativeTo: .body)
+
+    /// Big chapter tile numeral.
+    static let chapterTileNumber = Font.custom("CrimsonText-Regular", size: 18, relativeTo: .body)
+
+    /// Sticky chapter title (kept for compatibility with views that still
+    /// reference it; sized to fit the inline header strip).
+    static let stickyTitle = Font.custom("Inter", size: 12, relativeTo: .footnote)
 }
 
-/// Spacing tokens from the design doc §07.
+/// Spacing tokens.
 enum AppSpacing {
-    /// Reading column horizontal margins.
+    /// Reading column horizontal margins (Reader portrait).
     static let readingMarginLeading: CGFloat = 28
-    /// Wider trailing margin to give note-indicator dots room to live.
     static let readingMarginTrailing: CGFloat = 56
 
-    /// Inter-verse spacing for prose books — continuous flow.
-    static let verseSpacingProse: CGFloat = 0
-    /// Looser inter-verse spacing for poetic books.
+    static let verseSpacingProse: CGFloat = 12
     static let verseSpacingPoetic: CGFloat = 6
 
     /// Line height multiplier for body text.
     static let scriptureLineSpacing: CGFloat = 8
 
-    /// Distance the user must overscroll past the last verse before chapter advance commits.
     static let pullToAdvanceThreshold: CGFloat = 90
-
-    /// Sticky title bar height (excludes safe-area inset).
     static let stickyTitleHeight: CGFloat = 44
+    static let chapterTopPadding: CGFloat = 32
 
-    /// Top padding below the sticky title before chapter content starts.
-    static let chapterTopPadding: CGFloat = 48
+    /// Tracking applied to small-caps headers ("NICODEMUS VISITS JESUS",
+    /// "OLD TESTAMENT", etc.).
+    static let smallCapsTracking: CGFloat = 2
 }
 
-/// Two reading layouts. The text uses tighter margins in Reader (portrait,
-/// full-width) and wider margins in Scholar (split with the scratchpad) so
-/// the column doesn't feel cramped against the divider.
+/// Reader vs Scholar layout. Scholar takes the right half of the screen for
+/// the notes pane, so the reader column gets wider margins to keep the line
+/// length comfortable.
 enum ReaderStyle {
     case reader
     case scholar

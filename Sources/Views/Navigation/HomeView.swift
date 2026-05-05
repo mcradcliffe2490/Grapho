@@ -1,19 +1,13 @@
 import SwiftUI
 import SwiftData
 
-/// The single landing screen. Combines the design doc's "Home" and
-/// "BookSelector" — for personal use one fewer tap is a real win, and the
-/// book grid is the natural primary surface anyway.
-///
-/// Layout (top to bottom):
-///   1. Translation label + Settings button
-///   2. Continue Reading card (if a last-read position exists)
-///   3. Library quick-links (Highlights / Notes / History)
-///   4. Book grid, segmented Old / New Testament
-///   5. Import-translation button at the bottom
+/// Home — wordmark + active translation top, Continue Reading card, then a
+/// flat columnar list of books split by Old / New Testament. No tile cards
+/// and no library-quick-link stack: those live in Settings now (and will
+/// land on a dedicated Library surface post-MVP). Matches the Figma's
+/// quiet, typographic landing.
 struct HomeView: View {
     @Environment(BibleStore.self) private var bibleStore
-    @Environment(\.modelContext) private var modelContext
     @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
 
     @State private var showImporter = false
@@ -22,38 +16,38 @@ struct HomeView: View {
 
     private var palette: BackgroundPalette { .current(rawValue: paletteRaw) }
 
-    private let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 12)]
+    /// Adaptive column count — we let SwiftUI pick how many columns fit at
+    /// ~140pt minimum each. Portrait iPad lands at ~5, landscape at ~7,
+    /// matching the Figma.
+    private let columns = [GridItem(.adaptive(minimum: 130, maximum: 180), spacing: 16, alignment: .leading)]
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
+            VStack(alignment: .leading, spacing: 0) {
+                topBar
+                    .padding(.top, 24)
+                    .padding(.horizontal, 32)
+
+                Divider()
+                    .padding(.top, 16)
 
                 if let lastRead {
                     continueReadingCard(lastRead)
+                        .padding(.top, 24)
+                        .padding(.horizontal, 32)
                 }
-
-                libraryQuickLinks
 
                 bookSection(title: "Old Testament", books: Book.oldTestament)
-                bookSection(title: "New Testament", books: Book.newTestament)
+                    .padding(.top, lastRead == nil ? 32 : 24)
 
-                importButton
+                bookSection(title: "New Testament", books: Book.newTestament)
+                    .padding(.top, 24)
+                    .padding(.bottom, 64)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 32)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(palette.color.ignoresSafeArea())
-        .navigationTitle("Grapho")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                NavigationLink(value: LibraryRoute.settings) {
-                    Image(systemName: "gearshape")
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
         .fileImporter(
             isPresented: $showImporter,
             allowedContentTypes: [.json],
@@ -70,115 +64,104 @@ struct HomeView: View {
             Text(importError ?? "")
         }
         .onAppear {
-            // Position can change while we're elsewhere in the stack — refresh
-            // each time Home returns.
             lastRead = LastReadingPosition.read()
         }
     }
 
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("GRAPHO")
-                    .font(AppFont.stickyTitle)
-                    .foregroundStyle(AppColor.textSecondary)
-                Text(bibleStore.translation?.displayName ?? "Loading…")
-                    .font(.footnote)
-                    .foregroundStyle(AppColor.textFaint)
-            }
+    // MARK: - Top bar
+
+    private var topBar: some View {
+        HStack(alignment: .center) {
+            Text("GRAPHO")
+                .font(AppFont.wordmark)
+                .tracking(2)
+                .foregroundStyle(AppColor.textPrimary)
             Spacer()
+            // Active translation as a quiet caps label — same treatment as
+            // the active-layer indicator in the reader for visual rhyme.
+            Text((bibleStore.translation?.identifier ?? "WEB").uppercased())
+                .font(AppFont.wordmark)
+                .tracking(2)
+                .foregroundStyle(AppColor.textSecondary)
+                .accessibilityLabel("Active translation")
+            // Settings — kept here as a small icon since the Figma omits it
+            // but we still need an entry point to preferences.
+            NavigationLink(value: LibraryRoute.settings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 14))
+                    .foregroundStyle(AppColor.textSecondary)
+            }
+            .padding(.leading, 12)
         }
     }
+
+    // MARK: - Continue Reading
 
     private func continueReadingCard(_ position: LastReadingPosition) -> some View {
         NavigationLink(value: ChapterRoute(book: position.book, chapter: position.chapter)) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Continue Reading")
-                        .font(.caption)
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(AppColor.background)
+                        .overlay(Circle().strokeBorder(AppColor.border, lineWidth: 0.75))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AppColor.textSecondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("CONTINUE READING")
+                        .font(AppFont.microCaps)
+                        .tracking(1.5)
                         .foregroundStyle(AppColor.textFaint)
                     Text("\(position.book.displayName) \(position.chapter)")
-                        .font(.title3.weight(.medium))
+                        .font(AppFont.bookListName)
                         .foregroundStyle(AppColor.textPrimary)
                 }
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(AppColor.textFaint)
             }
-            .padding(16)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 16)
             .background(AppColor.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(AppColor.border, lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
     }
 
-    private var libraryQuickLinks: some View {
-        HStack(spacing: 12) {
-            quickLink(title: "Highlights", icon: "highlighter", route: .highlights)
-            quickLink(title: "Notes", icon: "square.and.pencil", route: .notes)
-            quickLink(title: "History", icon: "clock", route: .history)
-        }
-    }
-
-    private func quickLink(title: String, icon: String, route: LibraryRoute) -> some View {
-        NavigationLink(value: route) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.title3)
-                Text(title)
-                    .font(.caption)
-            }
-            .foregroundStyle(AppColor.textPrimary)
-            .frame(maxWidth: .infinity, minHeight: 64)
-            .background(AppColor.surface)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(AppColor.border, lineWidth: 0.5)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-        }
-        .buttonStyle(.plain)
-    }
+    // MARK: - Book sections
 
     private func bookSection(title: String, books: [Book]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased())
-                .font(AppFont.sectionHeader)
-                .foregroundStyle(AppColor.textSecondary)
-            LazyVGrid(columns: columns, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Text(title.uppercased())
+                    .font(AppFont.listSection)
+                    .tracking(AppSpacing.smallCapsTracking)
+                    .foregroundStyle(AppColor.textFaint)
+                Rectangle()
+                    .fill(AppColor.border)
+                    .frame(height: 0.5)
+                    .frame(maxWidth: .infinity)
+            }
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
-                        BookTile(book: book, available: isAvailable(book))
+                        Text(book.displayName)
+                            .font(AppFont.bookListName)
+                            .foregroundStyle(isAvailable(book) ? AppColor.textPrimary : AppColor.textFaint)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
                     }
                     .buttonStyle(.plain)
                     .disabled(!isAvailable(book))
                 }
             }
         }
+        .padding(.horizontal, 32)
     }
 
-    private var importButton: some View {
-        Button {
-            showImporter = true
-        } label: {
-            HStack {
-                Image(systemName: "square.and.arrow.down")
-                Text("Import Translation (.json)")
-            }
-            .font(.callout)
-            .foregroundStyle(AppColor.textSecondary)
-            .frame(maxWidth: .infinity, minHeight: 48)
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(AppColor.border, lineWidth: 0.5)
-            )
-        }
-        .padding(.top, 8)
-    }
+    // MARK: - Helpers
 
     private func isAvailable(_ book: Book) -> Bool {
         bibleStore.translation?.book(book) != nil
@@ -202,28 +185,5 @@ struct HomeView: View {
         case .failure(let error):
             importError = error.localizedDescription
         }
-    }
-}
-
-private struct BookTile: View {
-    let book: Book
-    let available: Bool
-
-    var body: some View {
-        HStack {
-            Text(book.displayName)
-                .font(.callout)
-                .foregroundStyle(available ? AppColor.textPrimary : AppColor.textFaint)
-            Spacer()
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 14)
-        .background(AppColor.surface)
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(AppColor.border, lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .opacity(available ? 1 : 0.55)
     }
 }

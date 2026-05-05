@@ -100,14 +100,40 @@ struct AnnotationStore {
 
     // MARK: - Notes & section headers
 
-    /// Free-form note anchored to a verse. Multiple notes per verse are
-    /// allowed — a verse can collect several thoughts over time.
+    /// Free-form note. `verseNumber` is optional — a `nil` anchor means the
+    /// note applies to the whole chapter rather than a specific verse.
     @discardableResult
-    func addNote(verseNumber: Int, text: String, on layer: AnnotationLayer) -> VerseNote {
-        let note = VerseNote(verseId: verseNumber, text: text, kind: .note, layer: layer)
+    func addNote(
+        verseNumber: Int? = nil,
+        title: String = "",
+        text: String,
+        on layer: AnnotationLayer
+    ) -> VerseNote {
+        let note = VerseNote(
+            verseId: verseNumber,
+            title: title,
+            text: text,
+            kind: .note,
+            layer: layer
+        )
         context.insert(note)
         layer.notes.append(note)
         return note
+    }
+
+    /// Update an existing note's title/text and bump `updatedAt`.
+    func updateNote(_ note: VerseNote, title: String? = nil, text: String? = nil, verseId: Int? = nil) {
+        if let title { note.title = title }
+        if let text { note.text = text }
+        // Caller passes `nil` for verseId to mean "keep current"; to clear an
+        // anchor, use `clearNoteAnchor` below.
+        if let verseId { note.verseId = verseId }
+        note.updatedAt = .now
+    }
+
+    func clearNoteAnchor(_ note: VerseNote) {
+        note.verseId = nil
+        note.updatedAt = .now
     }
 
     /// User-authored section header rendered above the given verse.
@@ -119,6 +145,7 @@ struct AnnotationStore {
             $0.verseId == verseNumber && $0.kindRaw == NoteKind.sectionHeader.rawValue
         }) {
             existing.text = text
+            existing.updatedAt = .now
             return existing
         }
         let header = VerseNote(verseId: verseNumber, text: text, kind: .sectionHeader, layer: layer)
