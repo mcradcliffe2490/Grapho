@@ -91,7 +91,8 @@ struct ScholarReaderView: View {
                     NotesPaneView(
                         layer: activeLayer,
                         book: route.book,
-                        chapter: route.chapter
+                        chapter: route.chapter,
+                        verseCount: chapterVerseCount
                     )
                 }
             }
@@ -128,6 +129,16 @@ struct ScholarReaderView: View {
 
     private var paneKey: String {
         "\(route.book.rawValue)-\(route.chapter)-\(layerStore.active.rawValue)"
+    }
+
+    /// Number of verses in the current chapter — used to clamp the
+    /// notes anchor picker to real verse numbers. Falls back to 1 if the
+    /// translation is missing this chapter, which shouldn't happen but
+    /// keeps the picker non-empty.
+    private var chapterVerseCount: Int {
+        bibleStore.translation?
+            .chapter(book: route.book, number: route.chapter)?
+            .verses.count ?? 1
     }
 
     private func loadActiveLayer() async {

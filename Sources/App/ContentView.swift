@@ -53,6 +53,7 @@ struct ContentView: View {
                             case .highlights: HighlightsView()
                             case .notes: NotesListView()
                             case .notesBrowser: NotesBrowserView()
+                            case .noteEditor(let id): FullScreenNoteEditorView(noteId: id)
                             case .history: HistoryView()
                             case .settings: SettingsView()
                             }

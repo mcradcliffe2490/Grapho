@@ -15,6 +15,10 @@ enum LibraryRoute: Hashable {
     /// Full-screen browser for typed notes — groups by book, searchable.
     /// Reachable from the reader's left-side library menu bubble.
     case notesBrowser
+    /// Full-screen editor for a specific note. Reached by tapping a row in
+    /// `notesBrowser` — keeps the editing experience uninterrupted from
+    /// the reader (no jumping back to a chapter just to see one note).
+    case noteEditor(UUID)
     case history
     case settings
 }

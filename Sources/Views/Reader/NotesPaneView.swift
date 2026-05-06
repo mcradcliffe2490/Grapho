@@ -15,6 +15,11 @@ struct NotesPaneView: View {
     let layer: AnnotationLayer?
     let book: Book
     let chapter: Int
+    /// Number of verses in this chapter — used to clamp the anchor picker
+    /// to real verse numbers instead of a generic 1...176 list. Passed in
+    /// by the parent (ScholarReaderView) which already has the chapter
+    /// loaded.
+    let verseCount: Int
 
     @State private var selectedNoteId: UUID?
 
@@ -25,6 +30,7 @@ struct NotesPaneView: View {
                     note: note,
                     book: book,
                     chapter: chapter,
+                    verseCount: verseCount,
                     onBack: {
                         // Bump updatedAt + persist on exit so the list sorts
                         // freshly on re-entry.
@@ -188,16 +194,12 @@ private struct NoteEditorPane: View {
     @Bindable var note: VerseNote
     let book: Book
     let chapter: Int
+    let verseCount: Int
     let onBack: () -> Void
     let onDelete: () -> Void
 
     @State private var showDeleteConfirm = false
     @State private var anchorPickerOpen = false
-
-    /// Verse anchor candidates — 1...chapterVerseCount + nil for unanchored.
-    /// Computed lazily; for v1 we just allow 1...176 (longest chapter is
-    /// Psalm 119 at 176). Out-of-range entries are visually ignored.
-    private let verseRange = 1...176
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -270,62 +272,13 @@ private struct NoteEditorPane: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .popover(isPresented: $anchorPickerOpen, arrowEdge: .bottom) {
-            anchorPicker
-                .presentationCompactAdaptation(.popover)
+            NoteAnchorPicker(
+                note: note,
+                verseCount: verseCount,
+                onDismiss: { anchorPickerOpen = false }
+            )
+            .presentationCompactAdaptation(.popover)
         }
-    }
-
-    private var anchorPicker: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                AnnotationStore(context: modelContext).clearNoteAnchor(note)
-                try? modelContext.save()
-                anchorPickerOpen = false
-            } label: {
-                HStack {
-                    Text("No anchor")
-                        .font(AppFont.uiBody)
-                    Spacer()
-                    if note.verseId == nil {
-                        Image(systemName: "checkmark")
-                            .foregroundStyle(AppColor.textSecondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .foregroundStyle(AppColor.textPrimary)
-            }
-            .buttonStyle(.plain)
-            Divider()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(verseRange, id: \.self) { v in
-                        Button {
-                            note.verseId = v
-                            note.updatedAt = .now
-                            try? modelContext.save()
-                            anchorPickerOpen = false
-                        } label: {
-                            HStack {
-                                Text("Verse \(v)")
-                                    .font(AppFont.uiBody)
-                                Spacer()
-                                if note.verseId == v {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(AppColor.textSecondary)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(AppColor.textPrimary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-            .frame(maxHeight: 320)
-        }
-        .frame(minWidth: 220)
     }
 
     private var titleField: some View {

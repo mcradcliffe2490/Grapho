@@ -168,19 +168,13 @@ struct NotesBrowserView: View {
             .padding(.bottom, 8)
 
             ForEach(notes) { note in
-                NavigationLink(value: chapterRoute(for: note)) {
+                NavigationLink(value: LibraryRoute.noteEditor(note.id)) {
                     NotesBrowserRow(note: note)
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 32)
             }
         }
-    }
-
-    private func chapterRoute(for note: VerseNote) -> ChapterRoute? {
-        guard let layer = note.layer,
-              let book = Book(rawValue: layer.book) else { return nil }
-        return ChapterRoute(book: book, chapter: layer.chapter)
     }
 
     private var emptyState: some View {
