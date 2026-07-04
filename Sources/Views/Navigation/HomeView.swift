@@ -92,6 +92,7 @@ struct HomeView: View {
                     .foregroundStyle(AppColor.textSecondary)
             }
             .padding(.leading, 12)
+            .accessibilityLabel("Settings")
         }
     }
 

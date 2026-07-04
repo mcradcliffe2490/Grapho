@@ -56,8 +56,25 @@ final class VerseNote {
             .components(separatedBy: .newlines)
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if !firstLine.isEmpty { return firstLine }
+        if !firstLine.isEmpty { return firstLine.strippingMarkdown }
         return "Untitled"
+    }
+
+    /// Fully-qualified address of this note's verse anchor — `nil` for
+    /// chapter-scoped notes or if the stored book code doesn't resolve.
+    var anchorRef: VerseRef? {
+        guard let layer,
+              let book = Book(rawValue: layer.book),
+              let verse = verseId
+        else { return nil }
+        return VerseRef(book: book, chapter: layer.chapter, verse: verse)
+    }
+
+    /// Body text when present, else the display title — what compact
+    /// previews (margin cards, linked mentions) show. Markdown syntax is
+    /// stripped: previews render plain, only the editor shows source.
+    var previewContent: String {
+        text.isEmpty ? displayTitle : text.strippingMarkdown
     }
 
     /// Preview line for the drawer. Skips the first text line if it was used
@@ -69,9 +86,29 @@ final class VerseNote {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         if !trimmedTitle.isEmpty {
-            return lines.first ?? ""
+            return (lines.first ?? "").strippingMarkdown
         }
         // Title was implicit (first line) — preview is the second line.
-        return lines.dropFirst().first ?? ""
+        return (lines.dropFirst().first ?? "").strippingMarkdown
+    }
+}
+
+extension String {
+    /// Removes markdown syntax for one-line/compact previews: heading,
+    /// quote, and list markers at line starts, plus inline bold/italic/code
+    /// marks. Display-only — stored note text is never touched.
+    var strippingMarkdown: String {
+        let patterns: [(String, String)] = [
+            (#"(?m)^#{1,3}[ \t]+"#, ""),
+            (#"(?m)^>[ \t]?"#, ""),
+            (#"(?m)^[ \t]*([-*+]|\d+\.)[ \t]"#, ""),
+            (#"\*\*([^\*\n]+)\*\*"#, "$1"),
+            (#"(?<![\*\w])\*([^\*\n]+)\*(?!\*)"#, "$1"),
+            (#"(?<!\w)_([^_\n]+)_(?!\w)"#, "$1"),
+            (#"`([^`\n]+)`"#, "$1")
+        ]
+        return patterns.reduce(self) { result, rule in
+            result.replacingOccurrences(of: rule.0, with: rule.1, options: .regularExpression)
+        }
     }
 }

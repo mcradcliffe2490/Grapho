@@ -28,6 +28,7 @@ struct FullScreenNoteEditorView: View {
     @State private var note: VerseNote?
     @State private var anchorPickerOpen = false
     @State private var showDeleteConfirm = false
+    @State private var formatController = MarkdownEditController()
 
     var body: some View {
         Group {
@@ -55,7 +56,14 @@ struct FullScreenNoteEditorView: View {
             anchorChip(note: bindable)
             titleField(note: bindable)
             Divider().padding(.horizontal, 32).padding(.top, 4)
-            bodyField(note: bindable)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    bodyField(note: bindable)
+                    NoteThreadsSection(note: note)
+                        .padding(.horizontal, 32)
+                        .padding(.bottom, 40)
+                }
+            }
         }
         .alert("Delete this note?", isPresented: $showDeleteConfirm) {
             Button("Cancel", role: .cancel) {}
@@ -88,6 +96,11 @@ struct FullScreenNoteEditorView: View {
 
             Spacer()
 
+            MarkdownFormatBar(controller: formatController)
+            Rectangle()
+                .fill(AppColor.border)
+                .frame(width: 1, height: 15)
+                .padding(.horizontal, 6)
             Button {
                 showDeleteConfirm = true
             } label: {
@@ -176,14 +189,10 @@ struct FullScreenNoteEditorView: View {
 
     private func bodyField(note: VerseNote) -> some View {
         @Bindable var bindable = note
-        return TextEditor(text: $bindable.text)
-            .font(AppFont.scriptureBody)
-            .lineSpacing(6)
-            .scrollContentBackground(.hidden)
-            .padding(.horizontal, 28)
+        return MarkdownTextEditor(text: $bindable.text, controller: formatController)
+            .padding(.horizontal, 32)
             .padding(.vertical, 16)
-            .background(.clear)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity, minHeight: 260, alignment: .top)
     }
 
     private var emptyState: some View {

@@ -8,11 +8,12 @@ import SwiftUI
 ///    book replaces the stack with `[book]` so the user lands directly on
 ///    that book's chapter selector.
 /// 3. Notes — pushes the full-screen notes browser.
-///
-/// Post-MVP candidates listed in the design conversation (daily lectionary,
-/// reflections) intentionally not added yet — keeping v1 shallow.
+/// 4. Threads — the thread web for the book being read (design 8c).
 struct LibraryMenuButton: View {
     let navigation: ReaderNavigation
+    /// Book currently being read — the Threads entry scopes its web to it.
+    /// `nil` hides the entry (e.g. surfaces with no chapter context).
+    var book: Book?
     @Environment(BibleStore.self) private var bibleStore
 
     @State private var open = false
@@ -21,8 +22,8 @@ struct LibraryMenuButton: View {
         Button {
             open.toggle()
         } label: {
-            Image(systemName: "books.vertical")
-                .font(.system(size: 16, weight: .regular))
+            Image(systemName: "line.3.horizontal")
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(AppColor.textSecondary)
                 .frame(width: 36, height: 36)
                 .background(AppColor.background)
@@ -49,6 +50,30 @@ struct LibraryMenuButton: View {
             quickActionRow(label: "Notes", icon: "note.text") {
                 navigation.openNotesBrowser()
                 open = false
+            }
+            if let book {
+                Divider()
+                Button {
+                    navigation.openThreadWeb(book)
+                    open = false
+                } label: {
+                    HStack(spacing: 12) {
+                        ThreadLoopIcon()
+                            .stroke(AppColor.textPrimary, style: ThreadLoopIcon.strokeStyle)
+                            .frame(width: 15, height: 18)
+                            .frame(width: 18)
+                        Text("Threads")
+                            .font(AppFont.uiBody)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AppColor.textFaint)
+                    }
+                    .foregroundStyle(AppColor.textPrimary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
             }
             Divider()
             // Books — collapsible list. We let it scroll inside the popover

@@ -24,10 +24,10 @@
 	<false/>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Fonts/CrimsonText-Regular.ttf</string>
-		<string>Fonts/CrimsonText-Italic.ttf</string>
-		<string>Fonts/CrimsonText-Bold.ttf</string>
-		<string>Fonts/Inter[opsz,wght].ttf</string>
+		<string>CrimsonText-Regular.ttf</string>
+		<string>CrimsonText-Italic.ttf</string>
+		<string>CrimsonText-Bold.ttf</string>
+		<string>Inter[opsz,wght].ttf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>

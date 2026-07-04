@@ -33,15 +33,28 @@ struct NoteAnchorPicker: View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    noAnchorRow
-                    Divider()
-                    ForEach(range, id: \.self) { v in
-                        verseRow(v)
-                        if v != range.upperBound {
-                            Divider().padding(.leading, 16)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    // Plain VStack, not Lazy: lazy rows have no size until
+                    // realized, which made the initial scroll position drift
+                    // and then snap. A chapter tops out at 176 rows — cheap.
+                    VStack(spacing: 0) {
+                        noAnchorRow
+                        Divider()
+                        ForEach(range, id: \.self) { v in
+                            verseRow(v)
+                                .id(v)
+                            if v != range.upperBound {
+                                Divider().padding(.leading, 16)
+                            }
                         }
+                    }
+                }
+                .onAppear {
+                    // One deliberate jump to the current anchor, centered —
+                    // then the list stays wherever the user scrolls it.
+                    if let v = note.verseId {
+                        proxy.scrollTo(v, anchor: .center)
                     }
                 }
             }

@@ -1,22 +1,28 @@
 import SwiftUI
 
-/// Picks the reading layout based on iPad orientation: Reader (portrait) or
-/// Scholar (landscape). One container so the navigation destination stays
-/// type-uniform — the picker is hidden inside.
-///
-/// Geometry-based detection (rather than `UIDevice.current.orientation`)
-/// because it survives Slide Over / Split View cleanly: a Slide Over panel
-/// in landscape can still render Reader-portrait if the *window* is narrow.
+/// Picks the reading surface for a chapter. Two axes:
+/// - Reading practice (design turn 4): Read & Study, or Paper — an app-wide
+///   preference chosen at first run and changeable in Settings.
+/// - Geometry (Read & Study only): Reader (portrait) or Scholar (landscape
+///   reflow split). Geometry-based rather than `UIDevice.orientation` so it
+///   survives Slide Over / Split View cleanly.
 struct ReaderContainerView: View {
+    @AppStorage(PreferenceKey.readingMode) private var readingModeRaw: String = ReadingMode.default.rawValue
+
     let route: ChapterRoute
     let navigation: ReaderNavigation
 
     var body: some View {
-        GeometryReader { geo in
-            if geo.size.width > geo.size.height {
-                ScholarReaderView(route: route, navigation: navigation)
-            } else {
-                ChapterReaderView(route: route, navigation: navigation)
+        switch ReadingMode.current(rawValue: readingModeRaw) {
+        case .paper:
+            PaperChapterView(route: route, navigation: navigation)
+        case .readStudy:
+            GeometryReader { geo in
+                if geo.size.width > geo.size.height {
+                    ScholarReaderView(route: route, navigation: navigation)
+                } else {
+                    ChapterReaderView(route: route, navigation: navigation)
+                }
             }
         }
     }

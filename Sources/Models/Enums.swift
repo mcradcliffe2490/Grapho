@@ -33,6 +33,48 @@ enum LayerKind: String, Codable, CaseIterable, Identifiable {
         case .thematic:   return AppColor.layerThematic
         }
     }
+
+    /// One-line description under the mode name in its study "room"
+    /// (design turn 7a).
+    var tagline: String {
+        switch self {
+        case .exegetical: return "the words themselves — grammar, sense, sources"
+        case .devotional: return "the text and your heart — prayer, response"
+        case .thematic:   return "threads across the whole — motifs, echoes"
+        }
+    }
+}
+
+/// The app-wide reading practice (design turn 4): structured study with
+/// modes and verse-tied annotations, or a freeform page per chapter. A
+/// chosen season, not a toggle — set at first run, changeable in Settings.
+enum ReadingMode: String, Codable, CaseIterable, Identifiable {
+    case readStudy
+    case paper
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .readStudy: return "Read & Study"
+        case .paper:     return "Paper"
+        }
+    }
+
+    var blurb: String {
+        switch self {
+        case .readStudy:
+            return "Structured study across three modes. Highlights and notes tied to each verse, indexed and searchable."
+        case .paper:
+            return "A blank page for each chapter. Draw, annotate, and write freely — kept exactly as you left it."
+        }
+    }
+
+    static let `default`: ReadingMode = .readStudy
+
+    static func current(rawValue: String) -> ReadingMode {
+        ReadingMode(rawValue: rawValue) ?? .default
+    }
 }
 
 /// Distinguishes a free-form typed note from a section-header note. Both live

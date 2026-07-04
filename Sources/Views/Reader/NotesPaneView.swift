@@ -12,6 +12,7 @@ import SwiftData
 /// so the list re-sorts immediately.
 struct NotesPaneView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(BibleStore.self) private var bibleStore
     let layer: AnnotationLayer?
     let book: Book
     let chapter: Int
@@ -20,8 +21,20 @@ struct NotesPaneView: View {
     /// by the parent (ScholarReaderView) which already has the chapter
     /// loaded.
     let verseCount: Int
+    /// Navigate to a verse (used by thread cards to jump to the other end).
+    /// `nil` disables navigation from this pane.
+    var onOpenRef: ((VerseRef) -> Void)? = nil
 
     @State private var selectedNoteId: UUID?
+    /// This mode's threads touching this chapter. A thread with a "why" is
+    /// in practice a shared note pinned between two verses — it shows here
+    /// at *both* ends (stored once on the thread, so the ends never drift).
+    @State private var chapterThreads: [VerseThread] = []
+    /// Thread whose "why" is being edited via the alert.
+    @State private var editingThread: VerseThread?
+    @State private var whyDraft = ""
+    /// Thread opened full-length in the "Pull thread" sheet.
+    @State private var pulledThread: VerseThread?
 
     var body: some View {
         Group {
@@ -47,9 +60,48 @@ struct NotesPaneView: View {
             } else {
                 NotesListPane(
                     notes: chapterNotes,
+                    threads: chapterThreads,
+                    chapterRef: (book: book, chapter: chapter),
                     onSelect: { selectedNoteId = $0.id },
-                    onCreate: createNote
+                    onCreate: createNote,
+                    onOpenThread: { thread in
+                        if let ref = otherEnd(of: thread) {
+                            onOpenRef?(ref)
+                        }
+                    },
+                    onPullThread: { pulledThread = $0 },
+                    onEditWhy: { thread in
+                        whyDraft = thread.why
+                        editingThread = thread
+                    },
+                    onDeleteThread: deleteThread
                 )
+            }
+        }
+        .task(id: paneKey) {
+            refreshThreads()
+        }
+        .onAppear {
+            refreshThreads()
+        }
+        .sheet(item: $pulledThread) { thread in
+            ThreadDetailView(
+                thread: thread,
+                onOpenRef: { ref in onOpenRef?(ref) },
+                onDelete: { deleteThread(thread) }
+            )
+        }
+        .alert("Why these connect", isPresented: Binding(
+            get: { editingThread != nil },
+            set: { if !$0 { editingThread = nil } }
+        )) {
+            TextField("why these connect for you…", text: $whyDraft)
+            Button("Cancel", role: .cancel) { editingThread = nil }
+            Button("Save") {
+                editingThread?.why = whyDraft
+                try? modelContext.save()
+                editingThread = nil
+                refreshThreads()
             }
         }
     }
@@ -74,14 +126,52 @@ struct NotesPaneView: View {
         try? modelContext.save()
         selectedNoteId = note.id
     }
+
+    // MARK: - Threads
+
+    private var paneKey: String {
+        "\(book.rawValue)-\(chapter)-\(layer?.kindRaw ?? "")"
+    }
+
+    /// Threads born in this room's mode, touching this chapter.
+    private func refreshThreads() {
+        guard let layer, let translationId = bibleStore.translation?.identifier else { return }
+        chapterThreads = AnnotationStore(context: modelContext)
+            .threads(translation: translationId, book: book, chapter: chapter)
+            .filter { $0.modeRaw == layer.kindRaw }
+    }
+
+    private func otherEnd(of thread: VerseThread) -> VerseRef? {
+        // Prefer the end that is NOT in this chapter; for a same-chapter
+        // thread, jump to its target.
+        if let from = thread.fromRef, from.book != book || from.chapter != chapter {
+            return from
+        }
+        return thread.toRef
+    }
+
+    private func deleteThread(_ thread: VerseThread) {
+        let store = AnnotationStore(context: modelContext)
+        store.deleteThread(thread)
+        try? store.save()
+        refreshThreads()
+    }
 }
 
 // MARK: - List
 
 private struct NotesListPane: View {
     let notes: [VerseNote]
+    /// Threads touching this chapter in this mode. A thread with a "why" is
+    /// a shared note between two verses, so it lists here alongside notes.
+    let threads: [VerseThread]
+    let chapterRef: (book: Book, chapter: Int)
     let onSelect: (VerseNote) -> Void
     let onCreate: () -> Void
+    let onOpenThread: (VerseThread) -> Void
+    let onPullThread: (VerseThread) -> Void
+    let onEditWhy: (VerseThread) -> Void
+    let onDeleteThread: (VerseThread) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -103,7 +193,7 @@ private struct NotesListPane: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            if notes.isEmpty {
+            if notes.isEmpty && threads.isEmpty {
                 emptyState
             } else {
                 ScrollView {
@@ -117,10 +207,102 @@ private struct NotesListPane: View {
                             .buttonStyle(.plain)
                             Divider().padding(.leading, 16)
                         }
+                        if !threads.isEmpty {
+                            threadsSection
+                        }
                     }
                 }
             }
         }
+    }
+
+    private var threadsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 7) {
+                ThreadLoopIcon()
+                    .stroke(AppColor.textFaint, style: ThreadLoopIcon.strokeStyle)
+                    .frame(width: 12, height: 15)
+                Text("THREADS · \(threads.count)")
+                    .font(AppFont.microCaps)
+                    .tracking(AppSpacing.smallCapsTracking)
+                    .foregroundStyle(AppColor.textFaint)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 4)
+
+            ForEach(threads) { thread in
+                Button {
+                    onOpenThread(thread)
+                } label: {
+                    threadRow(thread)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button {
+                        onPullThread(thread)
+                    } label: {
+                        Label("Pull thread", systemImage: "arrow.up.and.down.text.horizontal")
+                    }
+                    Button {
+                        onEditWhy(thread)
+                    } label: {
+                        Label("Edit why…", systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        onDeleteThread(thread)
+                    } label: {
+                        Label("Cut thread", systemImage: "scissors")
+                    }
+                }
+                Divider().padding(.leading, 16)
+            }
+        }
+    }
+
+    private func threadRow(_ thread: VerseThread) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 7) {
+                Circle().fill(thread.mode.accentColor).frame(width: 6, height: 6)
+                Text(endpointsLabel(thread))
+                    .font(AppFont.uiBody)
+                    .foregroundStyle(AppColor.textPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 10))
+                    .foregroundStyle(AppColor.textFaint)
+            }
+            if thread.why.isEmpty {
+                Text("no why yet — long-press to add one")
+                    .font(.caption)
+                    .italic()
+                    .foregroundStyle(AppColor.textFaint)
+                    .padding(.leading, 13)
+            } else {
+                Text(thread.why)
+                    .font(.caption)
+                    .foregroundStyle(AppColor.textSecondary)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .padding(.leading, 13)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// "v14 → Numbers 21:9" from this chapter's side of the thread; fully
+    /// qualified on both sides if neither end is local (shouldn't happen).
+    private func endpointsLabel(_ thread: VerseThread) -> String {
+        func short(_ ref: VerseRef) -> String {
+            ref.book == chapterRef.book && ref.chapter == chapterRef.chapter
+                ? "v\(ref.verse)"
+                : ref.display
+        }
+        guard let from = thread.fromRef, let to = thread.toRef else { return "thread" }
+        return "\(short(from)) → \(short(to))"
     }
 
     private var emptyState: some View {
@@ -200,6 +382,7 @@ private struct NoteEditorPane: View {
 
     @State private var showDeleteConfirm = false
     @State private var anchorPickerOpen = false
+    @State private var formatController = MarkdownEditController()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -230,6 +413,11 @@ private struct NoteEditorPane: View {
             }
             .buttonStyle(.plain)
             Spacer()
+            MarkdownFormatBar(controller: formatController)
+            Rectangle()
+                .fill(AppColor.border)
+                .frame(width: 1, height: 15)
+                .padding(.horizontal, 4)
             Button {
                 showDeleteConfirm = true
             } label: {
@@ -290,11 +478,10 @@ private struct NoteEditorPane: View {
     }
 
     private var bodyField: some View {
-        TextEditor(text: $note.text)
-            .font(AppFont.uiBody)
-            .scrollContentBackground(.hidden)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            .background(.clear)
+        ScrollView {
+            MarkdownTextEditor(text: $note.text, controller: formatController)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+        }
     }
 }

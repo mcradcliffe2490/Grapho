@@ -46,11 +46,14 @@ targets:
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         ITSAppUsesNonExemptEncryption: false
+        # Bare filenames: the build copies Resources/Fonts/* into the bundle
+        # root (XcodeGen flattens the group), so a "Fonts/" prefix here would
+        # silently fail to register anything.
         UIAppFonts:
-          - Fonts/CrimsonText-Regular.ttf
-          - Fonts/CrimsonText-Italic.ttf
-          - Fonts/CrimsonText-Bold.ttf
-          - Fonts/Inter[opsz,wght].ttf
+          - CrimsonText-Regular.ttf
+          - CrimsonText-Italic.ttf
+          - CrimsonText-Bold.ttf
+          - Inter[opsz,wght].ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mcradcliffe.grapho
@@ -59,6 +62,20 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: "Apple Development"
+
+  GraphoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Grapho
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.mcradcliffe.graphoUITests
+        TEST_TARGET_NAME: Grapho
 
   GraphoTests:
     type: bundle.unit-test

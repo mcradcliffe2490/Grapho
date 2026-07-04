@@ -6,6 +6,7 @@ import SwiftUI
 /// here so the rest of the view tree can assume a translation exists.
 struct ContentView: View {
     @Environment(BibleStore.self) private var bibleStore
+    @AppStorage(PreferenceKey.hasChosenPractice) private var hasChosenPractice: Bool = false
     @State private var path = NavigationPath()
 
     /// Navigation actions shared with the reader views. Built fresh per body
@@ -26,6 +27,12 @@ struct ContentView: View {
             },
             openNotesBrowser: {
                 path.append(LibraryRoute.notesBrowser)
+            },
+            openNote: { id in
+                path.append(LibraryRoute.noteEditor(id))
+            },
+            openThreadWeb: { book in
+                path.append(LibraryRoute.threadWeb(book))
             }
         )
     }
@@ -39,6 +46,8 @@ struct ContentView: View {
                 FailureScreen(message: message) {
                     Task { await bibleStore.activateBundled() }
                 }
+            case .loaded where !hasChosenPractice:
+                PracticeChooserView()
             case .loaded:
                 NavigationStack(path: $path) {
                     HomeView()
@@ -56,6 +65,7 @@ struct ContentView: View {
                             case .noteEditor(let id): FullScreenNoteEditorView(noteId: id)
                             case .history: HistoryView()
                             case .settings: SettingsView()
+                            case .threadWeb(let book): ThreadWebView(book: book)
                             }
                         }
                 }

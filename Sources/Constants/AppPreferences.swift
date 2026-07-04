@@ -25,6 +25,16 @@ enum PreferenceKey {
 
     /// True if drawing requires Apple Pencil (finger scrolls instead of draws).
     static let pencilOnlyDraw = "pencilOnlyDraw"
+
+    /// Reader's share of the Scholar reflow split (0.35–0.72); 1.0 = study
+    /// pane collapsed to its thin edge.
+    static let scholarSplitFraction = "scholarSplitFraction"
+
+    /// App-wide reading practice — `ReadingMode.rawValue` (design turn 4).
+    static let readingMode = "readingMode"
+
+    /// True once the first-run "choose your practice" screen has been seen.
+    static let hasChosenPractice = "hasChosenPractice"
 }
 
 /// Strongly-typed wrappers around the active reading position. We keep book

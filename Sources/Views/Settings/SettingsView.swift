@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
     @AppStorage(PreferenceKey.headerMode) private var headerModeRaw: String = HeaderMode.custom.rawValue
     @AppStorage(PreferenceKey.pencilOnlyDraw) private var pencilOnly: Bool = false
+    @AppStorage(PreferenceKey.readingMode) private var readingModeRaw: String = ReadingMode.default.rawValue
 
     @State private var imported: [ImportedTranslation] = []
     @State private var deleteCandidate: ImportedTranslation?
@@ -21,6 +22,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             translationSection
+            readingModeSection
             readingSection
             drawingSection
             aboutSection
@@ -94,6 +96,80 @@ struct SettingsView: View {
                     .font(.footnote)
                     .foregroundStyle(AppColor.textFaint)
             }
+        }
+    }
+
+    // MARK: - Reading mode
+
+    /// "How you sit with the text" (design turn 4a): Read & Study or Paper.
+    /// Notes from each stay put — switch back and they're waiting.
+    private var readingModeSection: some View {
+        Section {
+            ForEach(ReadingMode.allCases) { mode in
+                Button {
+                    readingModeRaw = mode.rawValue
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        modeIcon(mode)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(mode.displayName)
+                                .font(.callout)
+                                .foregroundStyle(AppColor.textPrimary)
+                            Text(mode.blurb)
+                                .font(.caption)
+                                .foregroundStyle(AppColor.textMuted)
+                        }
+                        Spacer()
+                        if readingModeRaw == mode.rawValue {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(mode == .paper ? Color(hex: "#8A7A5A") : AppColor.layerExegetical)
+                                .padding(.top, 2)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        } header: {
+            Text("Reading Mode")
+        } footer: {
+            Text("This changes the whole reading experience. Notes from each stay put — switch back and they're waiting.")
+        }
+    }
+
+    @ViewBuilder
+    private func modeIcon(_ mode: ReadingMode) -> some View {
+        switch mode {
+        case .readStudy:
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppColor.layerExegetical.opacity(0.08))
+                .frame(width: 30, height: 30)
+                .overlay {
+                    let widths: [CGFloat] = [13, 13, 9]
+                    VStack(alignment: .leading, spacing: 2.5) {
+                        ForEach(widths.indices, id: \.self) { i in
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(AppColor.layerExegetical)
+                                .frame(width: widths[i], height: 1.6)
+                        }
+                    }
+                }
+        case .paper:
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(hex: "#8A7A5A").opacity(0.1))
+                .frame(width: 30, height: 30)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color(hex: "#FCFBF7"))
+                        .frame(width: 16, height: 20)
+                        .overlay {
+                            VStack(spacing: 3) {
+                                Rectangle().fill(Color(hex: "#D8CDB6")).frame(width: 10, height: 1)
+                                Rectangle().fill(Color(hex: "#D8CDB6")).frame(width: 7, height: 1)
+                            }
+                        }
+                        .overlay(RoundedRectangle(cornerRadius: 2).strokeBorder(Color(hex: "#C9BFA6"), lineWidth: 1))
+                }
         }
     }
 

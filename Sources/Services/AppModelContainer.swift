@@ -31,7 +31,9 @@ final class AppModelContainer {
             AnnotationLayer.self,
             Highlight.self,
             VerseNote.self,
-            ChapterVisit.self
+            ChapterVisit.self,
+            VerseThread.self,
+            PaperPage.self
         ])
         let configuration = ModelConfiguration(
             schema: schema,

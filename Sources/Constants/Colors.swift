@@ -50,6 +50,17 @@ enum AppColor {
     static let layerExegetical = Color(hex: "#4A6FA5")
     static let layerDevotional = Color(hex: "#5A8A6A")
     static let layerThematic = Color(hex: "#8A6A9A")
+
+    // Lectio reading page (design turns 2b/3a and later)
+    /// Hanging verse numbers in the left margin — fainter than `textFaint`.
+    static let marginNumber = Color(hex: "#D9D3C9")
+    /// Muted prose — section headers, snippets, secondary copy.
+    static let textMuted = Color(hex: "#8a8178")
+    /// Floating card hairline.
+    static let cardBorder = Color(hex: "#EDEAE4")
+    /// Dark surfaces: the verse action menu, mobile format bar.
+    static let inkSurface = Color(hex: "#1C1917")
+    static let inkText = Color(hex: "#EDE9E1")
 }
 
 /// The six curated reading-surface options. Default is Off-White (#FAF8F5).

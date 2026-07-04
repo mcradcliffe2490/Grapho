@@ -5,6 +5,10 @@ import Foundation
 struct ChapterRoute: Hashable {
     let book: Book
     let chapter: Int
+    /// When set, the reader scrolls to this verse on arrival and pulses it —
+    /// how following a thread lands you on the exact verse, not just the
+    /// chapter.
+    var focusVerse: Int? = nil
 }
 
 /// Destinations under the library/secondary nav umbrella. Lifted into an enum
@@ -21,6 +25,8 @@ enum LibraryRoute: Hashable {
     case noteEditor(UUID)
     case history
     case settings
+    /// "Your threads in {Book}" — the thread-web constellation (design 8c).
+    case threadWeb(Book)
 }
 
 /// Bundle of navigation actions a reader needs to drive the global
@@ -39,4 +45,9 @@ struct ReaderNavigation {
     let openBook: (Book) -> Void
     /// Push the full-screen notes browser onto the current stack.
     let openNotesBrowser: () -> Void
+    /// Push the full-screen editor for one note (e.g. from a margin dot or
+    /// right after "Note" on the verse action menu).
+    let openNote: (UUID) -> Void
+    /// Push the thread web for a book.
+    let openThreadWeb: (Book) -> Void
 }

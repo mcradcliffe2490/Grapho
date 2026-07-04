@@ -11,10 +11,9 @@ import SwiftUI
 enum AppFont {
     // MARK: - Scripture body (Crimson Text)
 
-    /// Long-form scripture body. 17pt with loose leading reads comfortably on
-    /// iPad without the lines getting too long; pairs with `lineSpacing(8)`
-    /// from `AppSpacing.scriptureLineSpacing`.
-    static let scriptureBody = Font.custom("CrimsonText-Regular", size: 17, relativeTo: .body)
+    /// Long-form scripture body. 19pt with generous leading per the Lectio
+    /// calm direction (design 2b); pairs with `AppSpacing.scriptureLineSpacing`.
+    static let scriptureBody = Font.custom("CrimsonText-Regular", size: 19, relativeTo: .body)
 
     /// Same body face used for chapter titles, scaled larger.
     static let chapterTitleNumeral = Font.custom("CrimsonText-Regular", size: 56, relativeTo: .largeTitle)
@@ -61,6 +60,17 @@ enum AppFont {
     /// Sticky chapter title (kept for compatibility with views that still
     /// reference it; sized to fit the inline header strip).
     static let stickyTitle = Font.custom("Inter", size: 12, relativeTo: .footnote)
+
+    // MARK: - Lectio page & threads (design turns 2b/3a/8/9)
+
+    /// Section headers on the reading page — centered Crimson italic.
+    static let sectionHeaderSerif = Font.custom("CrimsonText-Italic", size: 22, relativeTo: .title3)
+
+    /// Verse references in thread pickers, thread lists, and chips.
+    static let threadRef = Font.custom("CrimsonText-Regular", size: 15, relativeTo: .subheadline)
+
+    /// Note card body in margin popovers.
+    static let noteCard = Font.custom("CrimsonText-Regular", size: 16, relativeTo: .callout)
 }
 
 /// Spacing tokens.
@@ -69,11 +79,11 @@ enum AppSpacing {
     static let readingMarginLeading: CGFloat = 28
     static let readingMarginTrailing: CGFloat = 56
 
-    static let verseSpacingProse: CGFloat = 12
-    static let verseSpacingPoetic: CGFloat = 6
+    static let verseSpacingProse: CGFloat = 18
+    static let verseSpacingPoetic: CGFloat = 10
 
-    /// Line height multiplier for body text.
-    static let scriptureLineSpacing: CGFloat = 8
+    /// Extra leading for body text — airy per Lectio calm (design 2b).
+    static let scriptureLineSpacing: CGFloat = 11
 
     static let pullToAdvanceThreshold: CGFloat = 90
     static let stickyTitleHeight: CGFloat = 44

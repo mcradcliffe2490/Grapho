@@ -31,6 +31,22 @@ final class PassThroughCanvasView: PKCanvasView {
     }
 }
 
+/// Imperative handle onto a live canvas for custom tool UI. SwiftUI owns the
+/// canvas's data flow; undo/clear are inherently imperative, so they go
+/// through this thin reference instead of being faked with bindings.
+@MainActor
+final class CanvasController {
+    weak var canvas: PKCanvasView?
+
+    func undo() {
+        canvas?.undoManager?.undo()
+    }
+
+    func clear() {
+        canvas?.drawing = PKDrawing()
+    }
+}
+
 /// SwiftUI wrapper around `PKCanvasView` (specifically `PassThroughCanvasView`).
 /// Loads serialized `PKDrawing` data in, calls `onChange` with new data after
 /// a short debounce, and switches between pencil-only and finger-allowed input
@@ -52,6 +68,13 @@ struct DrawingCanvasView: UIViewRepresentable {
     /// its scroll-on-finger behavior. The standalone scratchpad sets this
     /// to `false` since it's the only thing in its pane.
     var passesFingerThrough: Bool = false
+    /// When set, the canvas uses this tool and the `PKToolPicker` palette is
+    /// never shown — the caller owns tool UI (Paper mode's pill). `nil`
+    /// keeps today's behavior: Apple's floating picker.
+    var tool: PKTool?
+    /// Optional handle for imperative canvas actions (undo / clear) from
+    /// custom tool UI. The representable attaches its canvas on make.
+    var controller: CanvasController?
     let onChange: (Data) -> Void
 
     func makeUIView(context: Context) -> PKCanvasView {
@@ -73,15 +96,21 @@ struct DrawingCanvasView: UIViewRepresentable {
             canvas.drawing = drawing
         }
 
-        // Tool picker: present once attached to a window. Doing it on next
-        // run-loop avoids the canvas-not-yet-in-window race.
-        DispatchQueue.main.async { [weak canvas] in
-            guard let canvas, let window = canvas.window else { return }
-            let picker = PKToolPicker.shared(for: window) ?? PKToolPicker()
-            picker.setVisible(true, forFirstResponder: canvas)
-            picker.addObserver(canvas)
-            canvas.becomeFirstResponder()
-            context.coordinator.toolPicker = picker
+        controller?.canvas = canvas
+
+        if let tool {
+            canvas.tool = tool
+        } else {
+            // Tool picker: present once attached to a window. Doing it on next
+            // run-loop avoids the canvas-not-yet-in-window race.
+            DispatchQueue.main.async { [weak canvas] in
+                guard let canvas, let window = canvas.window else { return }
+                let picker = PKToolPicker.shared(for: window) ?? PKToolPicker()
+                picker.setVisible(true, forFirstResponder: canvas)
+                picker.addObserver(canvas)
+                canvas.becomeFirstResponder()
+                context.coordinator.toolPicker = picker
+            }
         }
 
         return canvas
@@ -95,6 +124,10 @@ struct DrawingCanvasView: UIViewRepresentable {
         }
         if let pt = canvas as? PassThroughCanvasView {
             pt.passesFingerThrough = passesFingerThrough
+        }
+
+        if let tool {
+            canvas.tool = tool
         }
 
         // Reload the drawing only when the externally-bound data actually

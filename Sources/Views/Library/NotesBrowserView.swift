@@ -1,34 +1,67 @@
 import SwiftUI
 import SwiftData
 
-/// Full-screen notes browser, reachable from the reader's library bubble or
-/// (someday) from a Library tab. Lists every typed note across all books and
-/// chapters, grouped by book in canonical order, searchable, and exportable.
-///
-/// "Export" for v1 produces a Markdown blob and routes through the system
-/// share sheet — clipboard, save-as, mail, whatever. Post-MVP we can polish
-/// into a richer document export.
+/// The notes browser (design turn 10a): note-list beside the page. The list
+/// runs down the left in canonical order — books collapse, a book opens to
+/// its notes grouped by chapter — and clicking a note swaps the editor on
+/// the right. In compact width (Split View, future iPhone) the two become
+/// separate screens (10b): rows push the full-screen editor instead.
 struct NotesBrowserView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(PreferenceKey.backgroundPalette) private var paletteRaw: String = BackgroundPalette.default.rawValue
-    private var palette: BackgroundPalette { .current(rawValue: paletteRaw) }
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(BibleStore.self) private var bibleStore
+    @Environment(LayerStore.self) private var layerStore
 
-    /// All typed notes (kind == .note), most-recently-updated first. Sourced
-    /// directly via `@Query` so the list updates live as the user edits in
-    /// the right pane.
-    @Query(
-        filter: #Predicate<VerseNote> { $0.kindRaw == "note" },
-        sort: \.updatedAt,
-        order: .reverse
-    )
+    /// All typed notes (kind == .note). Sourced via `@Query` so the list
+    /// updates live as the user edits in the right column.
+    @Query(filter: #Predicate<VerseNote> { $0.kindRaw == "note" })
     private var allNotes: [VerseNote]
 
-    @State private var searchText: String = ""
+    @State private var searchText = ""
+    @State private var selectedNoteId: UUID?
+    /// Books whose groups are open. `nil` until first render, which seeds it
+    /// with the selected note's book (10a: only that book starts open).
+    @State private var expandedBooks: Set<Book>?
     @State private var showShareSheet = false
-    @State private var exportMarkdown: String = ""
+    @State private var exportMarkdown = ""
 
-    /// Filter by search text (matches title or body, case-insensitive).
+    var body: some View {
+        Group {
+            if sizeClass == .compact {
+                listPane(pushesRows: true)
+            } else {
+                HStack(spacing: 0) {
+                    listPane(pushesRows: false)
+                        .frame(width: 300)
+                    Rectangle().fill(Color(hex: "#E7E2D9")).frame(width: 1)
+                    if let note = selectedNote {
+                        NoteEditorColumn(note: note)
+                            .id(note.id)
+                    } else {
+                        emptyEditorState
+                    }
+                }
+            }
+        }
+        .background(Color(hex: "#FCFBF8").ignoresSafeArea())
+        .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [exportMarkdown])
+        }
+        .onAppear {
+            if selectedNoteId == nil {
+                selectedNoteId = allNotes.max(by: { $0.updatedAt < $1.updatedAt })?.id
+            }
+        }
+    }
+
+    // MARK: - Derived data
+
+    private var selectedNote: VerseNote? {
+        allNotes.first { $0.id == selectedNoteId } ?? nil
+    }
+
     private var filteredNotes: [VerseNote] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return allNotes }
@@ -37,160 +70,313 @@ struct NotesBrowserView: View {
         }
     }
 
-    /// Group filtered notes by Book (resolved from the layer's book code),
-    /// in canonical order.
-    private var groupedByBook: [(book: Book, notes: [VerseNote])] {
-        var grouped: [Book: [VerseNote]] = [:]
+    private struct BookGroup {
+        let book: Book
+        let chapters: [(chapter: Int, notes: [VerseNote])]
+        var count: Int { chapters.reduce(0) { $0 + $1.notes.count } }
+    }
+
+    /// Canonical order throughout: books in canon order, chapters ascending,
+    /// notes by verse anchor within a chapter.
+    private var groups: [BookGroup] {
+        var byBook: [Book: [Int: [VerseNote]]] = [:]
         for note in filteredNotes {
-            guard let bookCode = note.layer?.book,
-                  let book = Book(rawValue: bookCode)
-            else { continue }
-            grouped[book, default: []].append(note)
+            guard let raw = note.layer?.book, let book = Book(rawValue: raw),
+                  let chapter = note.layer?.chapter else { continue }
+            byBook[book, default: [:]][chapter, default: []].append(note)
         }
         return Book.allCases.compactMap { book in
-            guard let notes = grouped[book], !notes.isEmpty else { return nil }
-            return (book: book, notes: notes)
+            guard let chapters = byBook[book] else { return nil }
+            let ordered = chapters.keys.sorted().map { ch in
+                (chapter: ch, notes: chapters[ch]!.sorted {
+                    ($0.verseId ?? 0, $0.createdAt) < ($1.verseId ?? 0, $1.createdAt)
+                })
+            }
+            return BookGroup(book: book, chapters: ordered)
         }
     }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-            searchBar
-            Divider()
+    private var effectiveExpanded: Set<Book> {
+        if let expandedBooks { return expandedBooks }
+        // Seed: the selected note's book (or the first group) starts open.
+        if let selected = selectedNote, let raw = selected.layer?.book,
+           let book = Book(rawValue: raw) {
+            return [book]
+        }
+        return groups.first.map { [$0.book] } ?? []
+    }
 
-            if filteredNotes.isEmpty {
-                emptyState
+    // MARK: - List pane
+
+    private func listPane(pushesRows: Bool) -> some View {
+        VStack(spacing: 0) {
+            listHeader
+            searchField
+            if groups.isEmpty {
+                emptyListState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(groupedByBook, id: \.book) { group in
-                            bookGroupSection(group.book, notes: group.notes)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(groups, id: \.book) { group in
+                                bookRow(group)
+                                if effectiveExpanded.contains(group.book) {
+                                    ForEach(group.chapters, id: \.chapter) { entry in
+                                        chapterLabel(entry.chapter)
+                                        ForEach(entry.notes) { note in
+                                            noteRow(note, pushes: pushesRows)
+                                                .id(note.id)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.bottom, 16)
+                    }
+                    .onAppear {
+                        // Bring the selected note into view once. Falls back
+                        // to the default pick because this inner onAppear can
+                        // fire before the outer one assigns selectedNoteId.
+                        let id = selectedNoteId
+                            ?? allNotes.max(by: { $0.updatedAt < $1.updatedAt })?.id
+                        if let id {
+                            proxy.scrollTo(id, anchor: .center)
                         }
                     }
-                    .padding(.bottom, 32)
                 }
             }
         }
-        .background(palette.color.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: [exportMarkdown])
-        }
+        .background(Color(hex: "#F4F1EC"))
     }
 
-    // MARK: - Chrome
-
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
+    private var listHeader: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
             Button {
                 dismiss()
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Back")
-                        .font(AppFont.uiBody)
-                }
-                .foregroundStyle(AppColor.textSecondary)
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(AppColor.textMuted)
             }
             .buttonStyle(.plain)
-
             Text("Notes")
-                .font(.custom("CrimsonText-Regular", size: 22, relativeTo: .title))
+                .font(Font.custom("CrimsonText-Regular", size: 23, relativeTo: .title2))
                 .foregroundStyle(AppColor.textPrimary)
-                .padding(.leading, 12)
-
+            Text("\(allNotes.count)")
+                .font(AppFont.listSection)
+                .foregroundStyle(AppColor.textFaint)
             Spacer()
-
             Button {
                 exportMarkdown = buildMarkdownExport()
                 showShareSheet = true
             } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 13))
-                    Text("Export")
-                        .font(AppFont.uiBody)
-                }
-                .foregroundStyle(AppColor.textSecondary)
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13))
+                    .foregroundStyle(AppColor.textMuted)
             }
             .buttonStyle(.plain)
             .disabled(allNotes.isEmpty)
+            .accessibilityLabel("Export notes")
+            Button {
+                addNote()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 16))
+                    .foregroundStyle(AppColor.textMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("New note")
         }
-        .padding(.horizontal, 32)
-        .padding(.top, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
         .padding(.bottom, 12)
     }
 
-    private var searchBar: some View {
-        HStack(spacing: 8) {
+    private var searchField: some View {
+        HStack(spacing: 7) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 14))
-                .foregroundStyle(AppColor.textFaint)
-            TextField("Search notes…", text: $searchText)
-                .font(AppFont.uiBody)
-                .textFieldStyle(.plain)
-            if !searchText.isEmpty {
-                Button {
-                    searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(AppColor.textFaint)
-                }
-                .buttonStyle(.plain)
-            }
+                .font(.system(size: 12))
+                .foregroundStyle(Color(hex: "#C7C0B4"))
+            TextField("Search notes", text: $searchText)
+                .font(AppFont.listSection)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(AppColor.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 32)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 11)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 9).fill(.white))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(hex: "#E7E2D9"), lineWidth: 1))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 12)
     }
 
-    // MARK: - Groups & rows
+    private func bookRow(_ group: BookGroup) -> some View {
+        Button {
+            var expanded = effectiveExpanded
+            if expanded.contains(group.book) {
+                expanded.remove(group.book)
+            } else {
+                expanded.insert(group.book)
+            }
+            expandedBooks = expanded
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: effectiveExpanded.contains(group.book) ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 9))
+                    .foregroundStyle(AppColor.textFaint)
+                    .frame(width: 11)
+                Text(group.book.displayName)
+                    .font(Font.custom("CrimsonText-Bold", size: 16, relativeTo: .body))
+                    .foregroundStyle(AppColor.textPrimary)
+                Spacer()
+                Text("\(group.count)")
+                    .font(AppFont.microCaps)
+                    .foregroundStyle(Color(hex: "#C2BBAF"))
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 11)
+            .padding(.bottom, 10)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(hex: "#EAE5DC")).frame(height: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func chapterLabel(_ chapter: Int) -> some View {
+        Text("CHAPTER \(chapter)")
+            .font(AppFont.microCaps)
+            .tracking(1.5)
+            .foregroundStyle(Color(hex: "#B0A99E"))
+            .padding(.leading, 40)
+            .padding(.top, 6)
+            .padding(.bottom, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
     @ViewBuilder
-    private func bookGroupSection(_ book: Book, notes: [VerseNote]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text(book.displayName.uppercased())
-                    .font(AppFont.listSection)
-                    .tracking(AppSpacing.smallCapsTracking)
-                    .foregroundStyle(AppColor.textFaint)
-                Rectangle().fill(AppColor.border).frame(height: 0.5)
-                    .frame(maxWidth: .infinity)
+    private func noteRow(_ note: VerseNote, pushes: Bool) -> some View {
+        if pushes {
+            NavigationLink(value: LibraryRoute.noteEditor(note.id)) {
+                noteRowLabel(note, selected: false)
             }
-            .padding(.horizontal, 32)
-            .padding(.top, 16)
-            .padding(.bottom, 8)
-
-            ForEach(notes) { note in
-                NavigationLink(value: LibraryRoute.noteEditor(note.id)) {
-                    NotesBrowserRow(note: note)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 32)
+            .buttonStyle(.plain)
+        } else {
+            Button {
+                bumpUpdatedAtIfEdited()
+                selectedNoteId = note.id
+            } label: {
+                noteRowLabel(note, selected: note.id == selectedNoteId)
             }
+            .buttonStyle(.plain)
         }
     }
 
-    private var emptyState: some View {
+    private func noteRowLabel(_ note: VerseNote, selected: Bool) -> some View {
+        let mode = note.layer?.kind ?? .exegetical
+        let ref = refText(for: note)
+        return HStack(alignment: .top, spacing: 9) {
+            Circle()
+                .fill(mode.accentColor)
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ref)
+                    .font(AppFont.microCaps)
+                    .tracking(0.9)
+                    .foregroundStyle(selected ? mode.accentColor : Color(hex: "#B0A99E"))
+                Text(note.displayTitle)
+                    .font(Font.custom("CrimsonText-Regular", size: 16, relativeTo: .body))
+                    .foregroundStyle(AppColor.textPrimary)
+                    .lineLimit(1)
+                if !note.previewSnippet.isEmpty {
+                    Text(note.previewSnippet)
+                        .font(AppFont.listSection)
+                        .foregroundStyle(AppColor.textMuted)
+                        .lineLimit(1)
+                        .padding(.top, 1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 34)
+        .padding(.trailing, 18)
+        .padding(.vertical, 8)
+        .background(selected ? mode.accentColor.opacity(0.06) : .clear)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(selected ? mode.accentColor : .clear)
+                .frame(width: 3)
+        }
+        .contentShape(Rectangle())
+    }
+
+    // MARK: - Empty states
+
+    private var emptyListState: some View {
         VStack(spacing: 8) {
             Spacer()
             Text("No notes")
                 .font(AppFont.uiBody)
                 .foregroundStyle(AppColor.textSecondary)
             Text(searchText.isEmpty
-                 ? "Add notes from the right pane in Scholar mode."
+                 ? "Tap a verse and choose Note to start one."
                  : "Try a different search term.")
                 .font(.footnote)
                 .foregroundStyle(AppColor.textFaint)
+                .multilineTextAlignment(.center)
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+    }
+
+    private var emptyEditorState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "note.text")
+                .font(.system(size: 26))
+                .foregroundStyle(AppColor.textFaint)
+            Text("Select a note")
+                .font(AppFont.uiBody)
+                .foregroundStyle(AppColor.textFaint)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    // MARK: - Actions
+
+    private func refText(for note: VerseNote) -> String {
+        guard let raw = note.layer?.book, let book = Book(rawValue: raw),
+              let chapter = note.layer?.chapter else { return "" }
+        if let verse = note.verseId {
+            return "\(book.displayName) \(chapter):\(verse)".uppercased()
+        }
+        return "\(book.displayName) \(chapter)".uppercased()
+    }
+
+    /// New note from the browser anchors to the current reading position's
+    /// chapter in the active mode — the nearest sensible home.
+    private func addNote() {
+        guard let translationId = bibleStore.translation?.identifier else { return }
+        let position = LastReadingPosition.read()
+            ?? LastReadingPosition(book: .GEN, chapter: 1)
+        let store = AnnotationStore(context: modelContext)
+        let layer = store.findOrCreateLayer(
+            kind: layerStore.active,
+            translation: translationId,
+            book: position.book,
+            chapter: position.chapter
+        )
+        let note = store.addNote(text: "", on: layer)
+        try? store.save()
+        selectedNoteId = note.id
+        expandedBooks = effectiveExpanded.union([position.book])
+    }
+
+    /// Nudge `updatedAt` on the note being left so recency sorts stay honest.
+    private func bumpUpdatedAtIfEdited() {
+        guard let note = selectedNote else { return }
+        note.updatedAt = .now
+        try? modelContext.save()
     }
 
     // MARK: - Export
@@ -201,16 +387,13 @@ struct NotesBrowserView: View {
     private func buildMarkdownExport() -> String {
         var lines: [String] = ["# Grapho — Notes Export", ""]
         let formatter = ISO8601DateFormatter()
-        for group in groupedByBook {
+        for group in groups {
             lines.append("## \(group.book.displayName)")
             lines.append("")
-            // Group within a book by chapter.
-            let byChapter = Dictionary(grouping: group.notes, by: { $0.layer?.chapter ?? 0 })
-            let chapters = byChapter.keys.sorted()
-            for ch in chapters {
-                lines.append("### Chapter \(ch)")
+            for entry in group.chapters {
+                lines.append("### Chapter \(entry.chapter)")
                 lines.append("")
-                for note in byChapter[ch] ?? [] {
+                for note in entry.notes {
                     let anchor = note.verseId.map { " (v\($0))" } ?? ""
                     lines.append("**\(note.displayTitle)**\(anchor) — _\(formatter.string(from: note.updatedAt))_")
                     lines.append("")
@@ -223,64 +406,9 @@ struct NotesBrowserView: View {
     }
 }
 
-private struct NotesBrowserRow: View {
-    let note: VerseNote
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(note.displayTitle)
-                        .font(AppFont.uiBody)
-                        .foregroundStyle(AppColor.textPrimary)
-                        .lineLimit(1)
-                    if let v = note.verseId {
-                        Text("v\(v)")
-                            .font(AppFont.microCaps)
-                            .tracking(0.5)
-                            .foregroundStyle(AppColor.textSecondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppColor.surface)
-                            .clipShape(Capsule())
-                    }
-                    if let chapter = note.layer?.chapter {
-                        Text("ch. \(chapter)")
-                            .font(.caption2)
-                            .foregroundStyle(AppColor.textFaint)
-                    }
-                    Spacer()
-                    Text(formatted(note.updatedAt))
-                        .font(.caption2)
-                        .foregroundStyle(AppColor.textFaint)
-                }
-                if !note.previewSnippet.isEmpty {
-                    Text(note.previewSnippet)
-                        .font(.caption)
-                        .foregroundStyle(AppColor.textSecondary)
-                        .lineLimit(2)
-                }
-            }
-        }
-        .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(AppColor.border).frame(height: 0.5)
-        }
-    }
-
-    private func formatted(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f.string(from: date)
-    }
-}
-
 // MARK: - UIKit share sheet bridge
 
-private struct ShareSheet: UIViewControllerRepresentable {
+struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController {
         UIActivityViewController(activityItems: items, applicationActivities: nil)

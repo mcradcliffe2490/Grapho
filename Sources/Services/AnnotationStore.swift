@@ -158,6 +158,97 @@ struct AnnotationStore {
         context.delete(note)
     }
 
+    // MARK: - Threads
+
+    @discardableResult
+    func addThread(
+        translation: String,
+        from: VerseRef,
+        to: VerseRef,
+        mode: LayerKind,
+        why: String = ""
+    ) -> VerseThread {
+        let thread = VerseThread(translation: translation, from: from, to: to, mode: mode, why: why)
+        context.insert(thread)
+        return thread
+    }
+
+    /// Every thread touching any verse of the given chapter, in either
+    /// direction — the reader marks a verse's gutter whether the thread was
+    /// drawn from it or into it (design turn 8b: backlinks are free).
+    func threads(translation: String, book: Book, chapter: Int) -> [VerseThread] {
+        let bookRaw = book.rawValue
+        let descriptor = FetchDescriptor<VerseThread>(
+            predicate: #Predicate { thread in
+                thread.translation == translation && (
+                    (thread.fromBook == bookRaw && thread.fromChapter == chapter)
+                        || (thread.toBook == bookRaw && thread.toChapter == chapter)
+                )
+            },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    /// Threads with at least one end in the given book — feeds the
+    /// "Your threads in {Book}" web.
+    func threads(translation: String, inBook book: Book) -> [VerseThread] {
+        let bookRaw = book.rawValue
+        let descriptor = FetchDescriptor<VerseThread>(
+            predicate: #Predicate { thread in
+                thread.translation == translation
+                    && (thread.fromBook == bookRaw || thread.toBook == bookRaw)
+            },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    func allThreads(translation: String) -> [VerseThread] {
+        let descriptor = FetchDescriptor<VerseThread>(
+            predicate: #Predicate { $0.translation == translation },
+            sortBy: [SortDescriptor(\.createdAt)]
+        )
+        return (try? context.fetch(descriptor)) ?? []
+    }
+
+    func deleteThread(_ thread: VerseThread) {
+        context.delete(thread)
+    }
+
+    /// Typed notes anchored at exactly this verse, across all modes — feeds
+    /// "Linked mentions" (design 9b). Goes through `layers()` since notes
+    /// hang off their layer.
+    func notes(at ref: VerseRef, translation: String) -> [(note: VerseNote, mode: LayerKind)] {
+        layers(translation: translation, book: ref.book, chapter: ref.chapter)
+            .flatMap { layer in
+                layer.notes
+                    .filter { $0.verseId == ref.verse && $0.kindRaw == NoteKind.note.rawValue }
+                    .map { (note: $0, mode: layer.kind) }
+            }
+    }
+
+    // MARK: - Paper pages
+
+    /// The Paper drawing for a chapter, created empty on first request —
+    /// same lazy-materialization idea as layers.
+    func findOrCreatePaperPage(translation: String, book: Book, chapter: Int) -> PaperPage {
+        let bookRaw = book.rawValue
+        let descriptor = FetchDescriptor<PaperPage>(
+            predicate: #Predicate { page in
+                page.translation == translation
+                    && page.book == bookRaw
+                    && page.chapter == chapter
+            }
+        )
+        if let existing = (try? context.fetch(descriptor))?.first {
+            return existing
+        }
+        let page = PaperPage(translation: translation, book: bookRaw, chapter: chapter)
+        context.insert(page)
+        return page
+    }
+
     // MARK: - Reading history
 
     private static let historyCap = 100
